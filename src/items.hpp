@@ -363,6 +363,27 @@ typedef enum EquipmentType
 	TYPE_OFFHAND
 } EquipmentType;
 
+typedef enum RunicType
+{
+	RUNE_EMPTY,
+	RUNE_NONE,
+	RUNE_FLAMING,
+	RUNE_COLD,
+	RUNE_HOLYZAP,
+	RUNE_TELEZAP,
+	RUNE_BOLTZAP,
+	RUNE_POISON,
+	RUNE_VAMPIRIC,
+	RUNE_ANTIMAGIC,
+	RUNE_MAGIC,
+	RUNE_CHAOTIC,
+	RUNE_TYPE_ARMOR_LIMIT,
+	RUNE_ARMOR_SPITEFUL,
+	RUNE_ARMOR_MP_TO_HP,
+	RUNE_ARMOR_ARCHMAGI,
+	RUNE_ARMOR_CHAOTIC,
+} RunicType;
+
 class SummonProperties
 {
 	//TODO: Store monster stats.
@@ -387,6 +408,7 @@ class Item
 public:
 	ItemType type;
 	Status status;
+	RunicType rune;
 
 	Sint16 beatitude;  // blessedness
 	Sint16 count;      // how many of item
@@ -542,7 +564,7 @@ void item_Gem(Item* item, int player);
 void item_Spellbook(Item*& item, int player);
 
 //General functions.
-Item* newItem(ItemType type, Status status, Sint16 beatitude, Sint16 count, Uint32 appearance, bool identified, list_t* inventory);
+Item* newItem(ItemType type, Status status, Sint16 beatitude, Sint16 count, Uint32 appearance, bool identified, list_t* inventory, RunicType runetype = RUNE_EMPTY);
 void addItemToMonsterInventory(Item &item, list_t& inventory);
 Item* uidToItem(Uint32 uid);
 ItemType itemCurve(Category cat);

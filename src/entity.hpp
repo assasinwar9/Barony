@@ -34,7 +34,7 @@
 #define USERFLAG2 15
 
 // number of entity skills and fskills
-static const int NUMENTITYSKILLS = 60;
+static const int NUMENTITYSKILLS = 61;
 static const int NUMENTITYFSKILLS = 30;
 
 struct spell_t;

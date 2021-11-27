@@ -1049,6 +1049,7 @@ void Entity::addItemToChestFromInventory(int player, Item* item, bool all)
 	newitem->beatitude = item->beatitude;
 	newitem->appearance = item->appearance;
 	newitem->identified = item->identified;
+	newitem->rune = item->rune;
 
 	Item** slot = itemSlot(stats[player], item);
 	if ( multiplayer == CLIENT )
@@ -1180,6 +1181,7 @@ Item* Entity::getItemFromChest(Item* item, bool all, bool getInfoOnly)
 		newitem->beatitude = item->beatitude;
 		newitem->appearance = item->appearance;
 		newitem->identified = item->identified;
+		newitem->rune = item->rune;
 
 		//Tell the server.
 		if ( !getInfoOnly )
@@ -1230,6 +1232,7 @@ Item* Entity::getItemFromChest(Item* item, bool all, bool getInfoOnly)
 		newitem->beatitude = item->beatitude;
 		newitem->appearance = item->appearance;
 		newitem->identified = item->identified;
+		newitem->rune = item->rune;
 	}
 
 	if (!all)

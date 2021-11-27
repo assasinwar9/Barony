@@ -169,7 +169,7 @@ void consoleCommand(char const * const command_str)
 		{
 			if ( strstr(items[c].name_identified, name) )
 			{
-				dropItem(newItem(static_cast<ItemType>(c), EXCELLENT, 0, 1, rand(), true, &stats[clientnum]->inventory), 0);
+				dropItem(newItem(static_cast<ItemType>(c), EXCELLENT, 0, 1, rand(), true, &stats[clientnum]->inventory, (RunicType)(rand() % (int)(RUNE_TYPE_ARMOR_LIMIT))), 0);
 				break;
 			}
 		}
@@ -190,7 +190,7 @@ void consoleCommand(char const * const command_str)
 		{
 			if ( strstr(items[c].name_identified, name) )
 			{
-				dropItem(newItem(static_cast<ItemType>(c), WORN, -2, 1, rand(), false, &stats[clientnum]->inventory), 0);
+				dropItem(newItem(static_cast<ItemType>(c), WORN, -2, 1, rand(), false, &stats[clientnum]->inventory, (RunicType)(rand() % (int)(RUNE_TYPE_ARMOR_LIMIT))), 0);
 				break;
 			}
 		}
@@ -211,7 +211,7 @@ void consoleCommand(char const * const command_str)
 		{
 			if ( strstr(items[c].name_identified, name) )
 			{
-				dropItem(newItem(static_cast<ItemType>(c), WORN, 2, 1, rand(), false, &stats[clientnum]->inventory), 0);
+				dropItem(newItem(static_cast<ItemType>(c), WORN, 2, 1, rand(), false, &stats[clientnum]->inventory, (RunicType)(rand() % (int)(RUNE_TYPE_ARMOR_LIMIT))), 0);
 				break;
 			}
 		}

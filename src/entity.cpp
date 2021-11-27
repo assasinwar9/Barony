@@ -7493,7 +7493,238 @@ void Entity::attack(int pose, int charge, Entity* target)
 						}
 					}
 
+					//now calculate runic effects
+					if (myStats->weapon)
+					{
+						//bool procChance = (rand() % 10 + 1) <= (abs(myStats->weapon->beatitude) + 2);
+						//if (procChance)
+						if(true)
+						{
+							bool procOnEntity = myStats->weapon->beatitude < 0;
+							Entity* toProc = procOnEntity ? this : hit.entity;
+							Stat* toStats = procOnEntity ? myStats : hitstats;
+
+							RunicType runetype = myStats->weapon->rune;
+							if (runetype == RUNE_CHAOTIC)
+							{
+								runetype = (RunicType)(RUNE_FLAMING + (rand() % 8));
+							}
+
+							switch (runetype)
+							{
+							case RUNE_FLAMING:
+							{
+								if (toProc->flags[BURNABLE])
+								{
+									messagePlayer(player, "Your %s bursts into flames!", myStats->weapon->getName());
+
+									if (toStats)
+									{
+										toStats->burningInflictedBy = static_cast<Sint32>(uid);
+									}
+
+									bool wasBurning = toProc->flags[BURNING];
+
+									toProc->SetEntityOnFire();
+
+									if (!wasBurning && toProc->flags[BURNING])
+									{
+										toProc->char_fire = std::min(hit.entity->char_fire, static_cast<int>(TICKS_TO_PROCESS_FIRE * 6+(2*abs(myStats->weapon->beatitude))));
+									}
+
+									playSoundEntity(toProc, 153, 64);
+
+									int c;
+									for (c = 0; c < 100; c++)
+									{
+										Entity* entity = spawnFlame(toProc, SPRITE_FLAME);
+										entity->sprite = 16;
+										double vel = rand() % 10;
+										entity->vel_x = vel * cos(entity->yaw) * cos(entity->pitch) * .1;
+										entity->vel_y = vel * sin(entity->yaw) * cos(entity->pitch) * .1;
+										entity->vel_z = vel * sin(entity->pitch) * .2;
+										entity->skill[0] = 5 + rand() % 10;
+									}
+								}
+								break;
+							}
+							case RUNE_COLD:
+							{
+								messagePlayer(player, "Your %s glints with an icy coldness!", myStats->weapon->getName());
+
+								if (toProc->setEffect(EFF_SLOW, true, 100+(50*myStats->weapon->beatitude), true))
+								{
+									playSoundEntity(toProc, 172, 128);
+									for (int i = 0; i < 5; i++)
+									{
+										spawnMagicEffectParticles(toProc->x, toProc->y, toProc->z, 144);
+									}
+								}
+								break;
+							}
+							case RUNE_HOLYZAP:
+							{
+
+								switch (toStats->type)
+								{
+									case SKELETON:
+									case CREATURE_IMP:
+									case GHOUL:
+									case DEMON:
+									case SUCCUBUS:
+									case INCUBUS:
+									case VAMPIRE:
+									case LICH:
+									case LICH_ICE:
+									case LICH_FIRE:
+									case DEVIL:
+									{
+										messagePlayer(player, "Your %s unleashes holy wrath from above!", myStats->weapon->getName());
+
+										for (int i = 0; i < 50; i++)
+										{
+											Entity* entity = spawnFlame(toProc, 23);
+											entity->sprite = 23;
+											double vel = rand() % 10;
+											entity->vel_x = vel * cos(entity->yaw) * cos(entity->pitch) * .1;
+											entity->vel_y = vel * sin(entity->yaw) * cos(entity->pitch) * .1;
+											entity->vel_z = vel * sin(entity->pitch) * .2;
+											entity->skill[0] = 5 + rand() % 10;
+										}
+
+										playSoundEntity(toProc, 405, 128);
+										damage *= 2;
+										break;
+									}
+									default:
+										break;
+								}
+								break;
+							}
+							case RUNE_TELEZAP:
+							{
+								messagePlayer(player, "Your %s pulls and yanks in your grasp!", myStats->weapon->getName());
+
+								spawnMagicEffectParticles(toProc->x, toProc->y, toProc->z, 171);
+								toProc->teleportRandom();
+								break;
+							}
+							case RUNE_VAMPIRIC:
+							{
+								messagePlayer(player, "Your %s craves blood!", myStats->weapon->getName());
+
+								for (int i = 0; i < 100; i++)
+								{
+									Entity* entity = spawnFlame(toProc, 42);
+									entity->sprite = 42;
+									double vel = rand() % 10;
+									entity->vel_x = vel * cos(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_y = vel * sin(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_z = vel * sin(entity->pitch) * .2;
+									entity->skill[0] = 5 + rand() % 10;
+								}
+
+								playSoundEntity(toProc, 168, 128);
+								toProc->modHP(damage/2);
+								break;
+							}
+							case RUNE_ANTIMAGIC:
+							{
+								messagePlayer(player, "Your %s quenches the flow of magic around you!", myStats->weapon->getName());
+
+								for (int i = 0; i < 50; i++)
+								{
+									Entity* entity = spawnFlame(toProc, 154);
+									entity->sprite = 154;
+									double vel = rand() % 10;
+									entity->vel_x = vel * cos(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_y = vel * sin(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_z = vel * sin(entity->pitch) * .2;
+									entity->skill[0] = 5 + rand() % 10;
+								}
+
+								playSoundEntity(toProc, 174, 128);
+								if (!toProc->safeConsumeMP((abs(myStats->weapon->beatitude) * 10)))
+								{
+									toProc->safeConsumeMP(toProc->getMP());
+								}
+								break;
+							}
+							case RUNE_BOLTZAP:
+							{
+								messagePlayer(player, "Your %s crackles with electricity!", myStats->weapon->getName());
+
+								for (int i = 0; i < 25; i++)
+								{
+									Entity* entity = spawnFlame(toProc, 18);
+									entity->sprite = 18;
+									double vel = rand() % 10;
+									entity->vel_x = vel * cos(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_y = vel * sin(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_z = vel * sin(entity->pitch) * .2;
+									entity->skill[0] = 5 + rand() % 10;
+								}
+
+								playSoundEntity(toProc, 171, 128);
+								toProc->setEffect(EFF_PARALYZED, true, 50 + (25 * abs(myStats->weapon->beatitude)), true);
+								break;
+							}
+							
+							case RUNE_POISON:
+							{
+								messagePlayer(player, "Your %s drips with vile poison!", myStats->weapon->getName());
+
+								for (int i = 0; i < 50; i++)
+								{
+									Entity* entity = spawnFlame(toProc, 146);
+									entity->sprite = 146;
+									double vel = rand() % 10;
+									entity->vel_x = vel * cos(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_y = vel * sin(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_z = vel * sin(entity->pitch) * .2;
+									entity->skill[0] = 5 + rand() % 10;
+								}
+
+								toStats->EFFECTS[EFF_POISONED] = true;
+								toStats->EFFECTS_TIMERS[EFF_POISONED] = std::max(200, 300 - hit.entity->getCON() * 20);
+
+								playSoundEntity(toProc, 249, 64);
+								break;
+							}
+							case RUNE_MAGIC:
+							{
+								messagePlayer(player, "You feel your %s drawing on your essence to feed its power!", myStats->weapon->getName());
+
+								int attack_cost = 10 + abs(myStats->weapon->beatitude) * 5;
+
+								drainMP(10 + abs(myStats->weapon->beatitude)*5);
+
+								damage += attack_cost;
+
+								for (int i = 0; i < 50; i++)
+								{
+									Entity* entity = spawnFlame(toProc, 150  );
+									entity->sprite = 150;
+									double vel = rand() % 10;
+									entity->vel_x = vel * cos(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_y = vel * sin(entity->yaw) * cos(entity->pitch) * .1;
+									entity->vel_z = vel * sin(entity->pitch) * .2;
+									entity->skill[0] = 5 + rand() % 10;
+								}
+
+								playSoundEntity(toProc, 166, 128);
+								break;
+							}
+							default:
+							{
+								break;
+							}
+							}
+						}
+					}
+
 					hit.entity->modHP(-damage); // do the damage
+
 					bool skillIncreased = false;
 					// skill increase
 					// can raise skills up to skill level 20 on dummybots...
@@ -8579,6 +8810,7 @@ void Entity::attack(int pose, int charge, Entity* target)
 								else if ( backstab )
 								{
 									// backstab on unaware enemy
+									//2543 Your strike catches the %s unaware!#
 									messagePlayerMonsterEvent(player, color, *hitstats, language[2543], language[2543], MSG_COMBAT);
 									if ( player >= 0 && hitstats->EFFECTS[EFF_SHADOW_TAGGED] && this->creatureShadowTaggedThisUid == hit.entity->getUID() )
 									{
@@ -17396,6 +17628,13 @@ int Entity::getMagicResistance()
 	Stat* myStats = getStats();
 	if ( myStats )
 	{
+		if (myStats->weapon)
+		{
+			if (myStats->weapon->rune = RUNE_ANTIMAGIC)
+			{
+				resistance += (1 + myStats->weapon->beatitude);
+			}
+		}
 		if ( myStats->shield )
 		{
 			if ( myStats->shield->type == STEEL_SHIELD_RESISTANCE )

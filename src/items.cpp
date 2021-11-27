@@ -43,7 +43,7 @@ int decoyBoxRange = 15;
 
 -------------------------------------------------------------------------------*/
 
-Item* newItem(const ItemType type, const Status status, const Sint16 beatitude, const Sint16 count, const Uint32 appearance, const bool identified, list_t* const inventory)
+Item* newItem(const ItemType type, const Status status, const Sint16 beatitude, const Sint16 count, const Uint32 appearance, const bool identified, list_t* const inventory, RunicType runetype)
 {
 	Item* item;
 
@@ -69,8 +69,156 @@ Item* newItem(const ItemType type, const Status status, const Sint16 beatitude, 
 		item->node = nullptr;
 	}
 
+	/*QUARTERSTAFF,
+	BRONZE_SWORD,
+	BRONZE_MACE,
+	BRONZE_AXE,
+	BRONZE_SHIELD,
+	SLING,
+	IRON_SPEAR,
+	IRON_SWORD,
+	IRON_MACE,
+	IRON_AXE,
+	IRON_SHIELD,
+	SHORTBOW,
+	STEEL_HALBERD,
+	STEEL_SWORD,
+	STEEL_MACE,
+	STEEL_AXE,
+	STEEL_SHIELD,*/
+
+	/*	RUNE_FLAMING,
+	RUNE_COLD,
+	RUNE_HOLYZAP,
+	RUNE_TELEZAP,
+	RUNE_BOLTZAP,
+	RUNE_POISON,
+	RUNE_VAMPIRIC,
+	RUNE_ANTIMAGIC,
+	RUNE_MAGIC,
+	RUNE_CHAOTIC,*/
+
 	// now set all of my data elements
 	item->type = type;
+	item->rune = runetype;
+	if (runetype == RUNE_EMPTY)
+	{
+		if (type == BRONZE_SWORD || type == IRON_SWORD || type == STEEL_SWORD)
+		{
+			if ((rand() % 6 + 1) <= 2)
+			{
+				switch (rand() % 5 + 1)
+				{
+					case 1:
+						item->rune = RUNE_FLAMING;
+						break;
+					case 2:
+						item->rune = RUNE_COLD;
+						break;
+					case 3:
+						item->rune = RUNE_VAMPIRIC;
+						break;
+					case 4:
+						item->rune = RUNE_MAGIC;
+						break;
+					case 5:
+						item->rune = RUNE_POISON;
+						break;
+					default:
+						item->rune = RUNE_NONE;
+						break;
+				}
+			}
+			else
+			{
+				item->rune = RUNE_NONE;
+			}
+		}
+		else if (type == BRONZE_MACE || type == IRON_MACE || type == STEEL_MACE)
+		{
+			if ((rand() % 6 + 1) <= 2)
+			{
+				switch (rand() % 4 + 1)
+				{
+				case 1:
+					item->rune = RUNE_HOLYZAP;
+					break;
+				case 2:
+					item->rune = RUNE_TELEZAP;
+					break;
+				case 3:
+					item->rune = RUNE_COLD;
+					break;
+				case 4:
+					item->rune = RUNE_ANTIMAGIC;
+					break;
+				default:
+					item->rune = RUNE_NONE;
+					break;
+				}
+			}
+			else
+			{
+				item->rune = RUNE_NONE;
+			}
+		}
+		else if (type == BRONZE_AXE || type == IRON_AXE || type == STEEL_AXE)
+		{
+			if ((rand() % 6 + 1) <= 2)
+			{
+				switch (rand() % 5 + 1)
+				{
+				case 1:
+					item->rune = RUNE_FLAMING;
+					break;
+				case 2:
+					item->rune = RUNE_CHAOTIC;
+					break;
+				case 3:
+					item->rune = RUNE_VAMPIRIC;
+					break;
+				case 4:
+					item->rune = RUNE_ANTIMAGIC;
+					break;
+				case 5:
+					item->rune = RUNE_POISON;
+					break;
+				default:
+					item->rune = RUNE_NONE;
+					break;
+				}
+			}
+			else
+			{
+				item->rune = RUNE_NONE;
+			}
+		}
+		else if (type == STEEL_HALBERD || type == IRON_SPEAR || type == QUARTERSTAFF)
+		{
+			if ((rand() % 6 + 1) <= 2)
+			{
+				switch (rand() % 3 + 1)
+				{
+				case 1:
+					item->rune = RUNE_TELEZAP;
+					break;
+				case 2:
+					item->rune = RUNE_BOLTZAP;
+					break;
+				case 3:
+					item->rune = RUNE_HOLYZAP;
+					break;
+				default:
+					item->rune = RUNE_NONE;
+					break;
+				}
+			}
+			else
+			{
+				item->rune = RUNE_NONE;
+			}
+		}
+	}
 	item->status = status;
 	item->beatitude = beatitude;
 	item->count = count;
@@ -79,6 +227,7 @@ Item* newItem(const ItemType type, const Status status, const Sint16 beatitude, 
 	item->uid = itemuids;
 	item->ownerUid = 0;
 	item->isDroppable = true;
+
 	if ( inventory )
 	{
 		int y;
@@ -705,7 +854,43 @@ char* Item::description() const
 				}
 				else
 				{
-					snprintf(&tempstr[c], 1024 - c, "%s", items[type].name_identified);
+					switch (rune)
+					{
+					case RUNE_FLAMING:
+						snprintf(&tempstr[c], 1024 - c, "flaming %s", items[type].name_identified);
+						break;
+					case RUNE_TELEZAP:
+						snprintf(&tempstr[c], 1024 - c, "teleporting %s", items[type].name_identified);
+						break;
+					case RUNE_HOLYZAP:
+						snprintf(&tempstr[c], 1024 - c, "holy %s", items[type].name_identified);
+						break;
+					case RUNE_VAMPIRIC:
+						snprintf(&tempstr[c], 1024 - c, "bloodthirsty %s", items[type].name_identified);
+						break;
+					case RUNE_ANTIMAGIC:
+						snprintf(&tempstr[c], 1024 - c, "anti-magic %s", items[type].name_identified);
+						break;
+					case RUNE_COLD:
+						snprintf(&tempstr[c], 1024 - c, "freezing %s", items[type].name_identified);
+						break;
+					case RUNE_CHAOTIC:
+						snprintf(&tempstr[c], 1024 - c, "mischevious %s", items[type].name_identified);
+						break;
+					case RUNE_POISON:
+						snprintf(&tempstr[c], 1024 - c, "poisonous %s", items[type].name_identified);
+						break;
+					case RUNE_BOLTZAP:
+						snprintf(&tempstr[c], 1024 - c, "humming %s", items[type].name_identified);
+						break;
+					case RUNE_MAGIC:
+						snprintf(&tempstr[c], 1024 - c, "magic %s", items[type].name_identified);
+						break;
+					default:
+						snprintf(&tempstr[c], 1024 - c, "%s", items[type].name_identified);
+						break;
+					}
+					
 				}
 			}
 			else
@@ -1310,6 +1495,7 @@ bool dropItem(Item* const item, const int player, const bool notifyMessage)
 		entity->skill[13] = qtyToDrop;
 		entity->skill[14] = item->appearance;
 		entity->skill[15] = item->identified;
+		entity->skill[60] = item->rune;
 		entity->parent = players[player]->entity->getUID();
 		entity->itemOriginalOwner = entity->parent;
 
@@ -1513,6 +1699,7 @@ Entity* dropItemMonster(Item* const item, Entity* const monster, Stat* const mon
 		entity->skill[13] = count;
 		entity->skill[14] = item->appearance;
 		entity->skill[15] = item->identified;
+		entity->skill[60] = item->rune;
 		entity->itemOriginalOwner = item->ownerUid;
 		entity->parent = monster->getUID();
 
@@ -2949,7 +3136,7 @@ Item* itemPickup(const int player, Item* const item)
 			}
 		}
 
-		item2 = newItem(item->type, item->status, item->beatitude, item->count, item->appearance, item->identified, &stats[player]->inventory);
+		item2 = newItem(item->type, item->status, item->beatitude, item->count, item->appearance, item->identified, &stats[player]->inventory, item->rune);
 		item2->ownerUid = item->ownerUid;
 		return item2;
 	}
@@ -2972,7 +3159,7 @@ Item* newItemFromEntity(const Entity* const entity)
 	{
 		return nullptr;
 	}
-	Item* item = newItem(static_cast<ItemType>(entity->skill[10]), static_cast<Status>(entity->skill[11]), entity->skill[12], entity->skill[13], entity->skill[14], entity->skill[15], nullptr);
+	Item* item = newItem(static_cast<ItemType>(entity->skill[10]), static_cast<Status>(entity->skill[11]), entity->skill[12], entity->skill[13], entity->skill[14], entity->skill[15], nullptr, static_cast<RunicType>(entity->skill[60]));
 	item->ownerUid = static_cast<Uint32>(entity->itemOriginalOwner);
 	item->interactNPCUid = static_cast<Uint32>(entity->interactedByMonster);
 	return item;
@@ -4267,6 +4454,7 @@ void copyItem(Item* const itemToSet, const Item* const itemToCopy) //This should
 	}
 
 	itemToSet->type = itemToCopy->type;
+	itemToSet->rune = itemToCopy->rune;
 	itemToSet->status = itemToCopy->status;
 	itemToSet->beatitude = itemToCopy->beatitude;
 	itemToSet->count = itemToCopy->count;
