@@ -7496,11 +7496,11 @@ void Entity::attack(int pose, int charge, Entity* target)
 					//now calculate runic effects
 					if (myStats->weapon)
 					{
-						//bool procChance = (rand() % 10 + 1) <= (abs(myStats->weapon->beatitude) + 2);
-						//if (procChance)
-						if(true)
+						bool procChance = (rand() % 10 + 1) <= (abs(myStats->weapon->beatitude) + 3);
+						if (procChance)
+						//if(true)
 						{
-							bool procOnEntity = myStats->weapon->beatitude < 0;
+							bool procOnEntity = myStats->weapon->beatitude < 0 && (rand() % 2);
 							Entity* toProc = procOnEntity ? this : hit.entity;
 							Stat* toStats = procOnEntity ? myStats : hitstats;
 
@@ -7516,7 +7516,14 @@ void Entity::attack(int pose, int charge, Entity* target)
 							{
 								if (toProc->flags[BURNABLE])
 								{
-									messagePlayer(player, "Your %s bursts into flames!", myStats->weapon->getName());
+									if (procOnEntity)
+									{
+										messagePlayer(player, "The flames of your %s lick at your body!", myStats->weapon->getName());
+									}
+									else
+									{
+										messagePlayer(player, "Your %s bursts into flames!", myStats->weapon->getName());
+									}
 
 									if (toStats)
 									{
@@ -7550,7 +7557,14 @@ void Entity::attack(int pose, int charge, Entity* target)
 							}
 							case RUNE_COLD:
 							{
-								messagePlayer(player, "Your %s glints with an icy coldness!", myStats->weapon->getName());
+								if (procOnEntity)
+								{
+									messagePlayer(player, "The cold %s bites into your hand!");
+								}
+								else
+								{
+									messagePlayer(player, "Your %s glints with an icy coldness!", myStats->weapon->getName());
+								}
 
 								if (toProc->setEffect(EFF_SLOW, true, 100+(50*myStats->weapon->beatitude), true))
 								{
@@ -7579,7 +7593,14 @@ void Entity::attack(int pose, int charge, Entity* target)
 									case LICH_FIRE:
 									case DEVIL:
 									{
-										messagePlayer(player, "Your %s unleashes holy wrath from above!", myStats->weapon->getName());
+										if (procOnEntity)
+										{
+											messagePlayer(player, "The %s unleashes its holy wrath upon you!", myStats->weapon->getName());
+										}
+										else
+										{
+											messagePlayer(player, "Your %s unleashes holy wrath from above!", myStats->weapon->getName());
+										}
 
 										for (int i = 0; i < 50; i++)
 										{
@@ -7603,7 +7624,14 @@ void Entity::attack(int pose, int charge, Entity* target)
 							}
 							case RUNE_TELEZAP:
 							{
-								messagePlayer(player, "Your %s pulls and yanks in your grasp!", myStats->weapon->getName());
+								if (procOnEntity)
+								{
+									messagePlayer(player, "Your %s leaps, pulling you with it!", myStats->weapon->getName());
+								}
+								else
+								{
+									messagePlayer(player, "Your %s pulls and yanks in your grasp!", myStats->weapon->getName());
+								}
 
 								spawnMagicEffectParticles(toProc->x, toProc->y, toProc->z, 171);
 								toProc->teleportRandom();
@@ -7611,7 +7639,14 @@ void Entity::attack(int pose, int charge, Entity* target)
 							}
 							case RUNE_VAMPIRIC:
 							{
-								messagePlayer(player, "Your %s craves blood!", myStats->weapon->getName());
+								if (procOnEntity)
+								{
+									messagePlayer(player, "The %s channels blood against its wielder!", myStats->weapon->getName());
+								}
+								else
+								{
+									messagePlayer(player, "Your %s craves blood!", myStats->weapon->getName());
+								}
 
 								for (int i = 0; i < 100; i++)
 								{
@@ -7630,7 +7665,14 @@ void Entity::attack(int pose, int charge, Entity* target)
 							}
 							case RUNE_ANTIMAGIC:
 							{
-								messagePlayer(player, "Your %s quenches the flow of magic around you!", myStats->weapon->getName());
+								if (procOnEntity)
+								{
+									messagePlayer(player, "Your %s\'s anti-magic field drains your essence!", myStats->weapon->getName());
+								}
+								else
+								{
+									messagePlayer(player, "Your %s quenches the flow of magic around you!", myStats->weapon->getName());
+								}
 
 								for (int i = 0; i < 50; i++)
 								{
@@ -7652,7 +7694,14 @@ void Entity::attack(int pose, int charge, Entity* target)
 							}
 							case RUNE_BOLTZAP:
 							{
-								messagePlayer(player, "Your %s crackles with electricity!", myStats->weapon->getName());
+								if (procOnEntity)
+								{
+									messagePlayer(player, "Your %s jolts you with an electric shock!", myStats->weapon->getName());
+								}
+								else
+								{
+									messagePlayer(player, "Your %s crackles with electricity!", myStats->weapon->getName());
+								}
 
 								for (int i = 0; i < 25; i++)
 								{
@@ -7672,7 +7721,14 @@ void Entity::attack(int pose, int charge, Entity* target)
 							
 							case RUNE_POISON:
 							{
-								messagePlayer(player, "Your %s drips with vile poison!", myStats->weapon->getName());
+								if (procOnEntity)
+								{
+									messagePlayer(player, "Your %s covers you in a venomous spray!", myStats->weapon->getName());
+								}
+								else
+								{
+									messagePlayer(player, "Your %s drips with vile poison!", myStats->weapon->getName());
+								}
 
 								for (int i = 0; i < 50; i++)
 								{
@@ -7693,7 +7749,14 @@ void Entity::attack(int pose, int charge, Entity* target)
 							}
 							case RUNE_MAGIC:
 							{
-								messagePlayer(player, "You feel your %s drawing on your essence to feed its power!", myStats->weapon->getName());
+								if (procOnEntity)
+								{
+									messagePlayer(player, "You feel your %s drawing on your essence to feed its power!", myStats->weapon->getName());
+								}
+								else
+								{
+									messagePlayer(player, "You feel your %s drawing on your essence to feed its power!", myStats->weapon->getName());
+								}
 
 								int attack_cost = 10 + abs(myStats->weapon->beatitude) * 5;
 

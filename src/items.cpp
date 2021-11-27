@@ -69,35 +69,6 @@ Item* newItem(const ItemType type, const Status status, const Sint16 beatitude, 
 		item->node = nullptr;
 	}
 
-	/*QUARTERSTAFF,
-	BRONZE_SWORD,
-	BRONZE_MACE,
-	BRONZE_AXE,
-	BRONZE_SHIELD,
-	SLING,
-	IRON_SPEAR,
-	IRON_SWORD,
-	IRON_MACE,
-	IRON_AXE,
-	IRON_SHIELD,
-	SHORTBOW,
-	STEEL_HALBERD,
-	STEEL_SWORD,
-	STEEL_MACE,
-	STEEL_AXE,
-	STEEL_SHIELD,*/
-
-	/*	RUNE_FLAMING,
-	RUNE_COLD,
-	RUNE_HOLYZAP,
-	RUNE_TELEZAP,
-	RUNE_BOLTZAP,
-	RUNE_POISON,
-	RUNE_VAMPIRIC,
-	RUNE_ANTIMAGIC,
-	RUNE_MAGIC,
-	RUNE_CHAOTIC,*/
-
 	// now set all of my data elements
 	item->type = type;
 	item->rune = runetype;
