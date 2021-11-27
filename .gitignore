@@ -1,2 +1,5 @@
 VS-includes/*
 VS-libs/*
+VS.2015/*
+VS.2015/Barony/Barony.vcxproj
+*.vcxproj
