@@ -7715,7 +7715,7 @@ void Entity::attack(int pose, int charge, Entity* target)
 								}
 
 								playSoundEntity(toProc, 171, 128);
-								toProc->setEffect(EFF_PARALYZED, true, 50 + (25 * abs(myStats->weapon->beatitude)), true);
+								toProc->setEffect(EFF_PARALYZED, true, 25 + (int)((float)12.5 * (float)abs(myStats->weapon->beatitude)), true);
 								break;
 							}
 							

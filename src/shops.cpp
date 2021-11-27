@@ -168,7 +168,7 @@ void buyItemFromShop(Item* item)
 			shopspeech = language[197 + rand() % 3];
 		}
 		shoptimer = ticks - 1;
-		Item* itemToPickup = newItem(item->type, item->status, item->beatitude, 1, item->appearance, item->identified, nullptr);
+		Item* itemToPickup = newItem(item->type, item->status, item->beatitude, 1, item->appearance, item->identified, nullptr, item->rune);
 		if ( itemTypeIsQuiver(item->type) )
 		{
 			itemToPickup->count = item->count;
@@ -439,7 +439,7 @@ void sellItemToShop(Item* item)
 		shopspeech = language[206 + rand() % 3];
 	}
 	shoptimer = ticks - 1;
-	Item* sold = newItem(item->type, item->status, item->beatitude, 1, item->appearance, item->identified, shopInv);
+	Item* sold = newItem(item->type, item->status, item->beatitude, 1, item->appearance, item->identified, shopInv, item->rune);
 	if ( itemTypeIsQuiver(item->type) )
 	{
 		sold->count = item->count;

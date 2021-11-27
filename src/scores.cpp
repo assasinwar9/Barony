@@ -681,7 +681,8 @@ void saveAllScores(const std::string& scoresfilename)
 			Item* item = (Item*)node2->element;
 			fwrite(&item->type, sizeof(ItemType), 1, fp);
 			fwrite(&item->status, sizeof(Status), 1, fp);
-			fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+			Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+			fwrite(&beatrune, sizeof(Sint16), 1, fp);
 			fwrite(&item->count, sizeof(Sint16), 1, fp);
 			fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 			fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1130,10 +1131,12 @@ void loadAllScores(const std::string& scoresfilename)
 			fread(&type, sizeof(ItemType), 1, fp);
 			fread(&status, sizeof(Status), 1, fp);
 			fread(&beatitude, sizeof(Sint16), 1, fp);
+			Sint16 rune = (beatitude >> 8) & 0x0FF;
+			beatitude = (beatitude & 0xFF) - 32;
 			fread(&count, sizeof(Sint16), 1, fp);
 			fread(&appearance, sizeof(Uint32), 1, fp);
 			fread(&identified, sizeof(bool), 1, fp);
-			newItem(type, status, beatitude, count, appearance, identified, &score->stats->inventory);
+			newItem(type, status, beatitude, count, appearance, identified, &score->stats->inventory, (RunicType)rune);
 		}
 		fread(&c, sizeof(Uint32), 1, fp);
 		node = list_Node(&score->stats->inventory, c);
@@ -1434,7 +1437,8 @@ int saveGame(int saveIndex)
 				Item* item = (Item*)node->element;
 				fwrite(&item->type, sizeof(ItemType), 1, fp);
 				fwrite(&item->status, sizeof(Status), 1, fp);
-				fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+				Sint16 beatrune = ((item->beatitude+32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+				fwrite(&beatrune, sizeof(Sint16), 1, fp);				
 				fwrite(&item->count, sizeof(Sint16), 1, fp);
 				fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 				fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1551,7 +1555,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->helmet;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1566,7 +1571,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->breastplate;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1581,7 +1587,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->gloves;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1596,7 +1603,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->shoes;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1611,7 +1619,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->shield;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1626,7 +1635,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->weapon;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1641,7 +1651,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->cloak;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1656,7 +1667,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->amulet;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1671,7 +1683,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->ring;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1686,7 +1699,8 @@ int saveGame(int saveIndex)
 					Item* item = stats[player]->mask;
 					fwrite(&item->type, sizeof(ItemType), 1, fp);
 					fwrite(&item->status, sizeof(Status), 1, fp);
-					fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+					Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+					fwrite(&beatrune, sizeof(Sint16), 1, fp);					
 					fwrite(&item->count, sizeof(Sint16), 1, fp);
 					fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 					fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1792,7 +1806,8 @@ int saveGame(int saveIndex)
 						Item* item = (Item*)node->element;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1806,7 +1821,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->helmet;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1821,7 +1837,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->breastplate;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1836,7 +1853,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->gloves;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1851,7 +1869,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->shoes;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1866,7 +1885,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->shield;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1881,7 +1901,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->weapon;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1896,7 +1917,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->cloak;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1911,7 +1933,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->amulet;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1926,7 +1949,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->ring;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -1941,7 +1965,8 @@ int saveGame(int saveIndex)
 						Item* item = followerStats->mask;
 						fwrite(&item->type, sizeof(ItemType), 1, fp);
 						fwrite(&item->status, sizeof(Status), 1, fp);
-						fwrite(&item->beatitude, sizeof(Sint16), 1, fp);
+						Sint16 beatrune = ((item->beatitude + 32) & 0xFF) | ((item->rune << 8) & 0xFF00);
+						fwrite(&beatrune, sizeof(Sint16), 1, fp);						
 						fwrite(&item->count, sizeof(Sint16), 1, fp);
 						fwrite(&item->appearance, sizeof(Uint32), 1, fp);
 						fwrite(&item->identified, sizeof(bool), 1, fp);
@@ -2297,10 +2322,12 @@ int loadGame(int player, int saveIndex)
 			fread(&type, sizeof(ItemType), 1, fp);
 			fread(&status, sizeof(Status), 1, fp);
 			fread(&beatitude, sizeof(Sint16), 1, fp);
+			Sint16 rune = (beatitude >> 8) & 0xFF;
+			beatitude = (beatitude & 0xFF) - 32;
 			fread(&count, sizeof(Sint16), 1, fp);
 			fread(&appearance, sizeof(Uint32), 1, fp);
 			fread(&identified, sizeof(bool), 1, fp);
-			Item* item = newItem(type, status, beatitude, count, appearance, identified, &stats[player]->inventory);
+			Item* item = newItem(type, status, beatitude, count, appearance, identified, &stats[player]->inventory, (RunicType)rune);
 			fread(&item->x, sizeof(Sint32), 1, fp);
 			fread(&item->y, sizeof(Sint32), 1, fp);
 		}
@@ -2438,11 +2465,13 @@ int loadGame(int player, int saveIndex)
 				{
 					fread(&status, sizeof(Status), 1, fp);
 					fread(&beatitude, sizeof(Sint16), 1, fp);
+					Sint16 rune = (beatitude >> 8) & 0xFF;
+					beatitude = (beatitude & 0xFF) - 32;
 					fread(&count, sizeof(Sint16), 1, fp);
 					fread(&appearance, sizeof(Uint32), 1, fp);
 					fread(&identified, sizeof(bool), 1, fp);
 
-					Item* item = newItem(type, status, beatitude, count, appearance, identified, NULL);
+					Item* item = newItem(type, status, beatitude, count, appearance, identified, NULL, (RunicType)rune);
 
 					switch ( c )
 					{
@@ -2702,11 +2731,13 @@ list_t* loadGameFollowers(int saveIndex)
 				fread(&type, sizeof(ItemType), 1, fp);
 				fread(&status, sizeof(Status), 1, fp);
 				fread(&beatitude, sizeof(Sint16), 1, fp);
+				Sint16 rune = (beatitude >> 8) & 0xFF;
+				beatitude = (beatitude & 0xFF) - 32;
 				fread(&count, sizeof(Sint16), 1, fp);
 				fread(&appearance, sizeof(Uint32), 1, fp);
 				fread(&identified, sizeof(bool), 1, fp);
 
-				Item* item = newItem(type, status, beatitude, count, appearance, identified, &followerStats->inventory);
+				Item* item = newItem(type, status, beatitude, count, appearance, identified, &followerStats->inventory, (RunicType)rune);
 				fread(&item->x, sizeof(Sint32), 1, fp);
 				fread(&item->y, sizeof(Sint32), 1, fp);
 			}
@@ -2720,11 +2751,13 @@ list_t* loadGameFollowers(int saveIndex)
 				{
 					fread(&status, sizeof(Status), 1, fp);
 					fread(&beatitude, sizeof(Sint16), 1, fp);
+					Sint16 rune = (beatitude >> 8) & 0xFF;
+					beatitude = (beatitude & 0xFF) - 32;
 					fread(&count, sizeof(Sint16), 1, fp);
 					fread(&appearance, sizeof(Uint32), 1, fp);
 					fread(&identified, sizeof(bool), 1, fp);
 
-					Item* item = newItem(type, status, beatitude, count, appearance, identified, NULL);
+					Item* item = newItem(type, status, beatitude, count, appearance, identified, NULL, (RunicType)rune);
 
 					switch ( b )
 					{
