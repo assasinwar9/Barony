@@ -7788,6 +7788,54 @@ void Entity::attack(int pose, int charge, Entity* target)
 
 					hit.entity->modHP(-damage); // do the damage
 
+					if (hitstats->shoes)
+					{
+						//bool procChance = (rand() % 10 + 1) <= (abs(myStats->shoes->beatitude) + 3);
+						//if (procChance && (myStats->HP <= (myStats->MAXHP/3)))
+						if (true)
+						{
+							bool procFail = hitstats->shoes->beatitude < 0 && (rand() % 2);
+
+							switch (hitstats->shoes->rune)
+							{
+							case RUNE_ARMOR_LAST_STAND:
+							{
+								if (procFail)
+								{
+									messagePlayer(playerhit, "Your %s quiver for a moment!", hitstats->shoes->getName());
+								}
+								else
+								{
+									messagePlayer(playerhit, "Your %s jump and stamp, pushing you forwards!", hitstats->shoes->getName());
+									hitstats->EFFECTS[EFF_FAST] = true;
+									hitstats->EFFECTS_TIMERS[EFF_FAST] += 300 + (hitstats->shoes->beatitude * 25);
+									hitstats->EFFECTS[EFF_POTION_STR] = true;
+									hitstats->EFFECTS_TIMERS[EFF_POTION_STR] += 300 + (hitstats->shoes->beatitude * 25);
+									playSoundEntity(hit.entity, 169, 64);
+								}
+								break;
+							}
+							case RUNE_ARMOR_TELEPORT_COWARD:
+							{
+								if (procFail)
+								{
+									messagePlayer(playerhit, "Your %s tug at your feet to no avail!", hitstats->shoes->getName());
+									playSoundEntity(hit.entity, 77, 64);
+								}
+								else
+								{
+									messagePlayer(playerhit, "Your %s yank you to safety!", hitstats->shoes->getName());
+									hit.entity->teleportRandom();
+								}
+								break;
+							}
+							default:
+								break;
+							}
+						}
+					}
+
+
 					bool skillIncreased = false;
 					// skill increase
 					// can raise skills up to skill level 20 on dummybots...

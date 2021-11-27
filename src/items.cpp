@@ -189,6 +189,38 @@ Item* newItem(const ItemType type, const Status status, const Sint16 beatitude, 
 				item->rune = RUNE_NONE;
 			}
 		}
+		/*	LEATHER_BOOTS,
+	LEATHER_BOOTS_SPEED,
+	IRON_BOOTS,
+	IRON_BOOTS_WATERWALKING,
+	STEEL_BOOTS,
+	STEEL_BOOTS_LEVITATION,
+	STEEL_BOOTS_FEATHER,*/
+		else if (type == LEATHER_BOOTS || type == IRON_BOOTS || type == STEEL_BOOTS)
+		{
+			if ((rand() % 6 + 1) <= 2)
+			{
+				switch (rand() % 3 + 1)
+				{
+				case 1:
+					item->rune = RUNE_ARMOR_LAST_STAND;
+					break;
+				case 2:
+					item->rune = RUNE_ARMOR_TELEPORT_COWARD;
+					break;
+				case 3:
+					item->rune = RUNE_ARMOR_SILENCE;
+					break;
+				default:
+					item->rune = RUNE_NONE;
+					break;
+				}
+			}
+			else
+			{
+				item->rune = RUNE_NONE;
+			}
+		}
 	}
 	item->status = status;
 	item->beatitude = beatitude;
@@ -856,6 +888,15 @@ char* Item::description() const
 						break;
 					case RUNE_MAGIC:
 						snprintf(&tempstr[c], 1024 - c, "magic %s", items[type].name_identified);
+						break;
+					case RUNE_ARMOR_LAST_STAND:
+						snprintf(&tempstr[c], 1024 - c, "%s of courage", items[type].name_identified);
+						break;
+					case RUNE_ARMOR_TELEPORT_COWARD:
+						snprintf(&tempstr[c], 1024 - c, "%s of cowardice", items[type].name_identified);
+						break;
+					case RUNE_ARMOR_SILENCE:
+						snprintf(&tempstr[c], 1024 - c, "%s of silence", items[type].name_identified);
 						break;
 					default:
 						snprintf(&tempstr[c], 1024 - c, "%s", items[type].name_identified);

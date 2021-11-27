@@ -367,21 +367,25 @@ typedef enum RunicType
 {
 	RUNE_EMPTY,
 	RUNE_NONE,
-	RUNE_FLAMING,
-	RUNE_COLD,
-	RUNE_HOLYZAP,
-	RUNE_TELEZAP,
-	RUNE_BOLTZAP,
-	RUNE_POISON,
-	RUNE_VAMPIRIC,
-	RUNE_ANTIMAGIC,
-	RUNE_MAGIC,
-	RUNE_CHAOTIC,
-	RUNE_TYPE_ARMOR_LIMIT,
-	RUNE_ARMOR_SPITEFUL,
-	RUNE_ARMOR_MP_TO_HP,
-	RUNE_ARMOR_ARCHMAGI,
-	RUNE_ARMOR_CHAOTIC,
+	RUNE_FLAMING, //adds fire dot to attacks
+	RUNE_COLD, //adds slowing effect to attacks
+	RUNE_HOLYZAP, //adds smite effect to attacks
+	RUNE_TELEZAP, //adds teleport effect to attacks
+	RUNE_BOLTZAP, //adds paralyze effect to attacks
+	RUNE_POISON, //adds poison dot to attacks
+	RUNE_VAMPIRIC, //leeches damage done to hp
+	RUNE_ANTIMAGIC, //drains mana and raises magic resistance
+	RUNE_MAGIC, // mana + health to damage
+	RUNE_CHAOTIC, // any of the above at random
+	RUNE_TYPE_ARMOR_LIMIT, 
+	RUNE_ARMOR_SPITE, // chance to return attack as damage
+	RUNE_ARMOR_ARCHMAGI, // chance to convert hp to mp damage, +magic resistance
+	RUNE_ARMOR_LAST_STAND, // chance to get beneficial potion effect on damage
+	RUNE_ARMOR_TELEPORT_COWARD, // chance to teleport away on damage, +speed
+	RUNE_ARMOR_HEALING, // chance to recover mp/hp on damage
+	RUNE_ARMOR_REPEL_STATUS,
+	RUNE_ARMOR_SILENCE,
+	RUNE_TYPE_RANGED_LIMIT,
 } RunicType;
 
 class SummonProperties
