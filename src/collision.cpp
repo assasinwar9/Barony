@@ -50,18 +50,35 @@ real_t entityDist(Entity* my, Entity* your)
 
 -------------------------------------------------------------------------------*/
 
-Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
+Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player, EntityClickType clicktype)
 {
 	Uint32 uidnum;
 	GLubyte pixel[4];
 
-	if ( !clickCheckOverride && !(*inputPressed(impulses[IN_USE])) && !(*inputPressed(joyimpulses[INJOY_GAME_USE])) )
+	if ( clicktype == ENTITY_CLICK_HELD_USE_TOOLTIPS_ONLY )
 	{
-		return NULL;
+		if ( !clickCheckOverride && !(*inputPressedForPlayer(player, impulses[IN_USE])) && !(inputs.bControllerInputHeld(player, INJOY_GAME_USE)) )
+		{
+			return NULL;
+		}
 	}
-	if ( !shootmode )
+	else
 	{
-		if ( itemMenuOpen )
+		if ( !clickCheckOverride && !(*inputPressedForPlayer(player, impulses[IN_USE])) && !(inputs.bControllerInputPressed(player, INJOY_GAME_USE)) )
+		{
+			return NULL;
+		}
+	}
+
+	Sint32 mx = inputs.getMouse(player, Inputs::OX);
+	Sint32 my = inputs.getMouse(player, Inputs::OY);
+	auto& inventoryUI = players[player]->inventoryUI;
+
+	auto& camera = cameras[player];
+
+	if ( !players[player]->shootmode )
+	{
+		if ( inputs.getUIInteraction(player)->itemMenuOpen )
 		{
 			if ( clickedOnGUI )
 			{
@@ -69,7 +86,7 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 			}
 			return NULL;
 		}
-		if ( omousex < 0 || omousex >= 0 + xres || omousey < 0 || omousey >= 0 + yres )
+		if ( mx < camera.winx || mx >= camera.winx + camera.winw || my < camera.winy || my >= camera.winy + camera.winh )
 		{
 			if ( clickedOnGUI )
 			{
@@ -77,8 +94,12 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 			}
 			return NULL;
 		}
-		if (openedChest[clientnum])
-			if (omousex > CHEST_INVENTORY_X && omousex < CHEST_INVENTORY_X + inventoryChest_bmp->w && omousey > CHEST_INVENTORY_Y && omousey < CHEST_INVENTORY_Y + inventoryChest_bmp->h)
+		if ( openedChest[player] )
+		{
+			if ( mx > getChestGUIStartX(player)
+				&& mx < getChestGUIStartX(player) + inventoryChest_bmp->w
+				&& my > getChestGUIStartY(player)
+				&& my < getChestGUIStartY(player) + inventoryChest_bmp->h )
 			{
 				if ( clickedOnGUI )
 				{
@@ -86,17 +107,29 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 				}
 				return NULL;    //Click falls inside the chest inventory GUI.
 			}
-		if (identifygui_active)
-			if (omousex > IDENTIFY_GUI_X && omousex < IDENTIFY_GUI_X + identifyGUI_img->w && omousey > IDENTIFY_GUI_Y && omousey < IDENTIFY_GUI_Y + identifyGUI_img->h)
+		}
+		SDL_Rect guiBox;
+		GenericGUI[player].getDimensions(guiBox);
+		if ( GenericGUI[player].isGUIOpen() )
+		{
+			if ( mx > guiBox.x
+				&& mx < guiBox.x + guiBox.w
+				&& my > guiBox.y
+				&& my < guiBox.y + guiBox.h )
 			{
 				if ( clickedOnGUI )
 				{
 					*clickedOnGUI = true;
 				}
-				return NULL;    //Click falls inside the identify item gui.
+				return NULL;    //Click falls inside the generic gui.
 			}
-		if (book_open)
-			if (mouseInBounds(BOOK_GUI_X, BOOK_GUI_X + bookgui_img->w, BOOK_GUI_Y, BOOK_GUI_Y + bookgui_img->h))
+		}
+		if ( players[player]->bookGUI.bBookOpen )
+		{
+			if ( mouseInBounds(player,
+				players[player]->bookGUI.getStartX(),
+				players[player]->bookGUI.getStartX() + players[player]->bookGUI.getBookWidth(),
+				players[player]->bookGUI.getStartY(), players[player]->bookGUI.getStartY() + players[player]->bookGUI.getBookHeight()) )
 			{
 				if ( clickedOnGUI )
 				{
@@ -104,10 +137,11 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 				}
 				return NULL;    //Click falls inside the book GUI.
 			}
-		if (gui_mode == GUI_MODE_INVENTORY || gui_mode == GUI_MODE_SHOP)
+		}
+		if ( players[player]->gui_mode == GUI_MODE_INVENTORY || players[player]->gui_mode == GUI_MODE_SHOP)
 		{
-			if ( gui_mode == GUI_MODE_INVENTORY )
-				if (mouseInBounds(RIGHTSIDEBAR_X, RIGHTSIDEBAR_X + rightsidebar_titlebar_img->w, RIGHTSIDEBAR_Y, RIGHTSIDEBAR_Y + rightsidebar_height))
+			if ( players[player]->gui_mode == GUI_MODE_INVENTORY )
+				if (mouseInBounds(player, RIGHTSIDEBAR_X, RIGHTSIDEBAR_X + rightsidebar_titlebar_img->w, RIGHTSIDEBAR_Y, RIGHTSIDEBAR_Y + rightsidebar_height))
 				{
 					if ( clickedOnGUI )
 					{
@@ -118,7 +152,11 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 			//int x = std::max(character_bmp->w, xres/2-inventory_bmp->w/2);
 			//if (mouseInBounds(x,x+inventory_bmp->w,0,inventory_bmp->h))
 			//return NULL;
-			if ( mouseInBounds(INVENTORY_STARTX, INVENTORY_STARTX + INVENTORY_SIZEX * INVENTORY_SLOTSIZE, INVENTORY_STARTY, INVENTORY_STARTY + INVENTORY_SIZEY * INVENTORY_SLOTSIZE) )
+			if ( mouseInBounds(player, 
+				inventoryUI.getStartX(),
+				inventoryUI.getStartX() + inventoryUI.getSizeX() * inventoryUI.getSlotSize(),
+				inventoryUI.getStartY(),
+				inventoryUI.getStartY() + inventoryUI.getSizeY() * inventoryUI.getSlotSize()) )
 			{
 				// clicked in inventory
 				if ( clickedOnGUI )
@@ -127,11 +165,11 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 				}
 				return NULL;
 			}
-			if ( gui_mode == GUI_MODE_SHOP )
+			if ( players[player]->gui_mode == GUI_MODE_SHOP )
 			{
 				int x1 = xres / 2 - SHOPWINDOW_SIZEX / 2, x2 = xres / 2 + SHOPWINDOW_SIZEX / 2;
 				int y1 = yres / 2 - SHOPWINDOW_SIZEY / 2, y2 = yres / 2 + SHOPWINDOW_SIZEY / 2;
-				if (mouseInBounds(x1, x2, y1, y2))
+				if (mouseInBounds(player, x1, x2, y1, y2))
 				{
 					if ( clickedOnGUI )
 					{
@@ -141,7 +179,7 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 				}
 			}
 		}
-		else if (gui_mode == GUI_MODE_MAGIC)
+		else if ( players[player]->gui_mode == GUI_MODE_MAGIC)
 		{
 			if (magic_GUI_state == 0)
 			{
@@ -149,7 +187,7 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 				int height = spell_list_titlebar_bmp->h;
 				int numspells = 0;
 				node_t* node;
-				for (node = spellList.first; node != NULL; node = node->next)
+				for (node = players[player]->magic.spellList.first; node != NULL; node = node->next)
 				{
 					numspells++;
 				}
@@ -158,7 +196,7 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 				height += numspells * spell_list_gui_slot_bmp->h;
 				int spelllist_y = 0 + ((yres / 2) - (height / 2)) + magicspell_list_offset_x;
 
-				if (mouseInBounds(MAGICSPELL_LIST_X, MAGICSPELL_LIST_X + spell_list_titlebar_bmp->w, spelllist_y, spelllist_y + height))
+				if (mouseInBounds(player, MAGICSPELL_LIST_X, MAGICSPELL_LIST_X + spell_list_titlebar_bmp->w, spelllist_y, spelllist_y + height))
 				{
 					if ( clickedOnGUI )
 					{
@@ -168,7 +206,12 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 				}
 			}
 		}
-		if ( mouseInBounds(interfaceCharacterSheet.x, interfaceCharacterSheet.x + interfaceCharacterSheet.w,
+		SDL_Rect& interfaceCharacterSheet = players[player]->characterSheet.characterSheetBox;
+		SDL_Rect& interfaceMessageStatusBar = players[player]->statusBarUI.messageStatusBarBox;
+		SDL_Rect& interfaceSkillsSheet = players[player]->characterSheet.skillsSheetBox;
+		SDL_Rect& interfacePartySheet = players[player]->characterSheet.partySheetBox;
+		SDL_Rect& interfaceStatsSheet = players[player]->characterSheet.statsSheetBox;
+		if ( mouseInBounds(player, interfaceCharacterSheet.x, interfaceCharacterSheet.x + interfaceCharacterSheet.w,
 			interfaceCharacterSheet.y, interfaceCharacterSheet.y + interfaceCharacterSheet.h) )   // character sheet
 		{
 			if ( clickedOnGUI )
@@ -177,9 +220,17 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 			}
 			return NULL;
 		}
-
+		if ( mouseInBounds(player, interfaceStatsSheet.x, interfaceStatsSheet.x + interfaceStatsSheet.w,
+			interfaceStatsSheet.y, interfaceStatsSheet.y + interfaceStatsSheet.h) )
+		{
+			if ( clickedOnGUI )
+			{
+				*clickedOnGUI = true;
+			}
+			return NULL;
+		}
 		if ( !hide_statusbar &&
-			mouseInBounds(interfaceMessageStatusBar.x, interfaceMessageStatusBar.x + interfaceMessageStatusBar.w,
+			mouseInBounds(player, interfaceMessageStatusBar.x, interfaceMessageStatusBar.x + interfaceMessageStatusBar.w,
 				interfaceMessageStatusBar.y, interfaceMessageStatusBar.y + interfaceMessageStatusBar.h) ) // bottom message log
 		{
 			if ( clickedOnGUI )
@@ -190,9 +241,9 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 		}
 
 		// ui code taken from drawSkillsSheet() and drawPartySheet().
-		if ( proficienciesPage == 0 )
+		if ( players[player]->characterSheet.proficienciesPage == 0 )
 		{
-			if ( mouseInBounds(interfaceSkillsSheet.x, interfaceSkillsSheet.x + interfaceSkillsSheet.w,
+			if ( mouseInBounds(player, interfaceSkillsSheet.x, interfaceSkillsSheet.x + interfaceSkillsSheet.w,
 				interfaceSkillsSheet.y, interfaceSkillsSheet.y + interfaceSkillsSheet.h) )
 			{
 				if ( clickedOnGUI )
@@ -204,7 +255,7 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 		}
 		else
 		{
-			if ( mouseInBounds(interfacePartySheet.x, interfacePartySheet.x + interfacePartySheet.w,
+			if ( mouseInBounds(player, interfacePartySheet.x, interfacePartySheet.x + interfacePartySheet.w,
 				interfacePartySheet.y, interfacePartySheet.y + interfacePartySheet.h) )
 			{
 				if ( clickedOnGUI )
@@ -215,7 +266,7 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 			}
 		}
 
-		if ( mouseInsidePlayerInventory() || mouseInsidePlayerHotbar() )
+		if ( mouseInsidePlayerInventory(player) || mouseInsidePlayerHotbar(player) )
 		{
 			if ( clickedOnGUI )
 			{
@@ -226,39 +277,91 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 
 		if ( softwaremode )
 		{
-			return clickmap[omousey + omousex * yres];
+			return clickmap[my + mx * (camera.winy + camera.winh)];
 		}
 		else
 		{
-			uidnum = GO_GetPixelU32(omousex, yres - omousey, cameras[player]);
+			if ( players[player]->worldUI.isEnabled() )
+			{
+				uidnum = 0;
+			}
+			else
+			{
+				uidnum = GO_GetPixelU32(mx, yres - my, cameras[player]);
+			}
+			//messagePlayer(0, "first: %d %d", uidnum, selectedEntityGimpTimer[player]);
 		}
 	}
 	else
 	{
 		if ( softwaremode )
 		{
-			return clickmap[(yres / 2) + (xres / 2) * yres];
+			return clickmap[
+				(cameras[player].winy + cameras[player].winh / 2) 
+				+ (cameras[player].winx + (cameras[player].winw / 2) * (cameras[player].winy + (cameras[player].winh / 2) * 2))];
 		}
 		else
 		{
-			uidnum = GO_GetPixelU32(xres / 2, yres / 2, cameras[player]);
+			if ( players[player]->worldUI.isEnabled() )
+			{
+				uidnum = 0;
+			}
+			else
+			{
+				uidnum = GO_GetPixelU32(cameras[player].winx + (cameras[player].winw / 2), yres - (cameras[player].winy + (cameras[player].winh / 2)), cameras[player]);
+			}
+			//messagePlayer(0, "first: %d", uidnum);
+			//uidnum = GO_GetPixelU32(cameras[player].winx + (cameras[player].winw / 2), (cameras[player].winy + (cameras[player].winh / 2)), cameras[player]);
+			//messagePlayer(0, "sec: %d", uidnum);
 		}
 	}
 
 	Entity* entity = uidToEntity(uidnum);
+	if ( players[player]->worldUI.isEnabled() )
+	{
+		for ( node_t* node = map.worldUI->first; node; node = node->next )
+		{
+			Entity* tooltip = (Entity*)node->element;
+			if ( !tooltip || tooltip->behavior != &actSpriteWorldTooltip )
+			{
+				continue;
+			}
+			if ( players[player]->worldUI.bTooltipActiveForPlayer(*tooltip) )
+			{
+				if ( tooltip->worldTooltipRequiresButtonHeld == 1 )
+				{
+					if ( inputs.bControllerInputHeld(player, INJOY_GAME_USE) || *inputPressedForPlayer(player, impulses[IN_USE]) )
+					{
+						entity = uidToEntity(tooltip->parent);
+					}
+				}
+				else
+				{
+					entity = uidToEntity(tooltip->parent);
+				}
+				break;
+			}
+		}
+		if ( !entity )
+		{
+			// clear the button input if we missed a tooltip, otherwise it'll keep retrying (or pre-fire a button held)
+			inputs.controllerClearInput(player, INJOY_GAME_USE);
+			*inputPressedForPlayer(player, impulses[IN_USE]) = 0;
+		}
+	}
 
 	if ( !entity && !mute_player_monster_sounds && !clickCheckOverride )
 	{
-		if ( players[clientnum] && players[clientnum]->entity && monsterEmoteGimpTimer == 0 )
+		if ( players[player] && players[player]->entity && players[player]->movement.monsterEmoteGimpTimer == 0 )
 		{
-			monsterEmoteGimpTimer = TICKS_PER_SECOND * 5;
+			players[player]->movement.monsterEmoteGimpTimer = TICKS_PER_SECOND * 5;
 			int sfx = 0;
 			int line = 0;
-			switch ( stats[clientnum]->type )
+			switch ( stats[player]->type )
 			{
 				case SKELETON:
 					sfx = 95;
-					monsterEmoteGimpTimer = TICKS_PER_SECOND;
+					players[player]->movement.monsterEmoteGimpTimer = TICKS_PER_SECOND;
 					break;
 				case SUCCUBUS:
 					sfx = 70;
@@ -322,7 +425,7 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 				{
 					playSound(sfx, 92);
 					strcpy((char*)net_packet->data, "EMOT");
-					net_packet->data[4] = clientnum;
+					net_packet->data[4] = player;
 					SDLNet_Write16(sfx, &net_packet->data[5]);
 					net_packet->address.host = net_server.host;
 					net_packet->address.port = net_server.port;
@@ -334,11 +437,11 @@ Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player)
 					playSound(sfx, 92);
 					for ( int c = 1; c < MAXPLAYERS; ++c )
 					{
-						if ( !client_disconnected[c] )
+						if ( !client_disconnected[c] && !players[c]->isLocalPlayer() )
 						{
 							strcpy((char*)net_packet->data, "SNEL");
 							SDLNet_Write16(sfx, &net_packet->data[4]);
-							SDLNet_Write32((Uint32)players[clientnum]->entity->getUID(), &net_packet->data[6]);
+							SDLNet_Write32((Uint32)players[player]->entity->getUID(), &net_packet->data[6]);
 							SDLNet_Write16(92, &net_packet->data[10]);
 							net_packet->address.host = net_clients[c - 1].host;
 							net_packet->address.port = net_clients[c - 1].port;
@@ -1458,6 +1561,10 @@ int checkObstacle(long x, long y, Entity* my, Entity* target)
 		}
 	}
 
+	//auto t = std::chrono::high_resolution_clock::now();
+	//auto t2 = std::chrono::high_resolution_clock::now();
+	//int entCheck = 0;
+	//
 	// collision detection
 	if ( x >= 0 && x < map.width << 4 )
 	{
@@ -1491,6 +1598,7 @@ int checkObstacle(long x, long y, Entity* my, Entity* target)
 				for ( node = currentList->first; node != nullptr; node = node->next )
 				{
 					entity = (Entity*)node->element;
+					//++entCheck;
 					if ( entity->flags[PASSABLE] || entity == my || entity == target || entity->behavior == &actDoor )
 					{
 						continue;
@@ -1510,6 +1618,12 @@ int checkObstacle(long x, long y, Entity* my, Entity* target)
 			}
 		}
 	}
+	//t2 = std::chrono::high_resolution_clock::now();
+	//real_t time = 1000 * std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t).count();
+	//if ( my )
+	//{
+	//	printlog("checkObstacle: %d: %d %f, entities: %d", my->sprite, my->monsterState, time, entCheck);
+	//}
 
 	if ( logCheckObstacle )
 	{

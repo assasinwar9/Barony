@@ -34,9 +34,7 @@ bool usecamerasmoothing = false;
 bool disablemouserotationlimit = false;
 bool settings_disablemouserotationlimit = false;
 bool swimDebuffMessageHasPlayed = false;
-int monsterEmoteGimpTimer = 0;
-int selectedEntityGimpTimer = 0;
-bool insectoidLevitating[MAXPLAYERS] = { false, false, false, false };
+bool partymode = false;
 
 /*-------------------------------------------------------------------------------
 
@@ -68,31 +66,58 @@ void actDeathCam(Entity* my)
 		deathcamGameoverPromptTicks = TICKS_PER_SECOND * 3;
 	}
 
+	real_t mousex_relative = mousexrel;
+	real_t mousey_relative = mouseyrel;
+
+	mousex_relative = inputs.getMouseFloat(DEATHCAM_PLAYERNUM, Inputs::ANALOGUE_XREL);
+	mousey_relative = inputs.getMouseFloat(DEATHCAM_PLAYERNUM, Inputs::ANALOGUE_YREL);
+
+	real_t mouse_speed = mousespeed;
+	if ( inputs.getVirtualMouse(DEATHCAM_PLAYERNUM)->lastMovementFromController )
+	{
+		mouse_speed = 32.0;
+	}
+
 	if ( DEATHCAM_TIME == 1 )
 	{
 		DEATHCAM_PLAYERTARGET = -1;
 	}
 	else if ( DEATHCAM_TIME == deathcamGameoverPromptTicks )
 	{
-		if ( gameModeManager.getMode() == GameModeManager_t::GAME_MODE_TUTORIAL )
+		bool playerAlive = false;
+		if ( splitscreen )
 		{
-			gameModeManager.Tutorial.openGameoverWindow();
+			for ( int c = 0; c < MAXPLAYERS; ++c )
+			{
+				if ( players[c] && players[c]->entity )
+				{
+					playerAlive = true;
+				}
+			}
 		}
-		else
+		if ( !playerAlive )
 		{
-			openGameoverWindow();
+			if ( gameModeManager.getMode() == GameModeManager_t::GAME_MODE_TUTORIAL )
+			{
+				gameModeManager.Tutorial.openGameoverWindow();
+			}
+			else
+			{
+				openGameoverWindow();
+			}
 		}
 	}
+	bool shootmode = players[DEATHCAM_PLAYERNUM]->shootmode;
 	if ( shootmode && !gamePaused )
 	{
 		if ( smoothmouse )
 		{
-			DEATHCAM_ROTX += mousexrel * .006 * (mousespeed / 128.f);
+			DEATHCAM_ROTX += mousex_relative * .006 * (mouse_speed / 128.f);
 			DEATHCAM_ROTX = fmin(fmax(-0.35, DEATHCAM_ROTX), 0.35);
 		}
 		else
 		{
-			DEATHCAM_ROTX = std::min<float>(std::max<float>(-0.35f, mousexrel * .01f * (mousespeed / 128.f)), 0.35f);
+			DEATHCAM_ROTX = std::min<float>(std::max<float>(-0.35f, mousex_relative * .01f * (mouse_speed / 128.f)), 0.35f);
 		}
 		my->yaw += DEATHCAM_ROTX;
 		if ( my->yaw >= PI * 2 )
@@ -106,12 +131,12 @@ void actDeathCam(Entity* my)
 
 		if ( smoothmouse )
 		{
-			DEATHCAM_ROTY += mouseyrel * .006 * (mousespeed / 128.f) * (reversemouse * 2 - 1);
+			DEATHCAM_ROTY += mousey_relative * .006 * (mouse_speed / 128.f) * (reversemouse * 2 - 1);
 			DEATHCAM_ROTY = fmin(fmax(-0.35, DEATHCAM_ROTY), 0.35);
 		}
 		else
 		{
-			DEATHCAM_ROTY = std::min<float>(std::max<float>(-0.35f, mouseyrel * .01f * (mousespeed / 128.f) * (reversemouse * 2 - 1)), 0.35f);
+			DEATHCAM_ROTY = std::min<float>(std::max<float>(-0.35f, mousey_relative * .01f * (mouse_speed / 128.f) * (reversemouse * 2 - 1)), 0.35f);
 		}
 		my->pitch -= DEATHCAM_ROTY;
 		if ( my->pitch > PI / 2 )
@@ -138,12 +163,12 @@ void actDeathCam(Entity* my)
 	{
 		// do nothing if still alive
 	}
-	else if ((*inputPressed(impulses[IN_ATTACK]) || (shootmode && *inputPressed(joyimpulses[INJOY_GAME_ATTACK]))) && shootmode)
+	else if ((*inputPressedForPlayer(DEATHCAM_PLAYERNUM, impulses[IN_ATTACK]) || (shootmode && inputs.bControllerInputPressed(DEATHCAM_PLAYERNUM, INJOY_GAME_ATTACK))) && shootmode)
 	{
-		*inputPressed(impulses[IN_ATTACK]) = 0;
+		*inputPressedForPlayer(DEATHCAM_PLAYERNUM, impulses[IN_ATTACK]) = 0;
 		if ( shootmode )
 		{
-			*inputPressed(joyimpulses[INJOY_GAME_ATTACK]) = 0;
+			inputs.controllerClearInput(DEATHCAM_PLAYERNUM, INJOY_GAME_ATTACK);
 		}
 		DEATHCAM_PLAYERTARGET++;
 		if (DEATHCAM_PLAYERTARGET >= MAXPLAYERS)
@@ -217,8 +242,15 @@ void actDeathCam(Entity* my)
 #define PLAYER_CAMERAZ_ACCEL my->fskill[14]
 #define PLAYERWALKSPEED .12
 
-bool isPlayerSwimming(Entity* my)
+bool Player::PlayerMovement_t::isPlayerSwimming()
 {
+	if ( !players[player.playernum]->entity  || !stats[player.playernum])
+	{
+		return false;
+	}
+
+	Entity* my = players[player.playernum]->entity;
+
 	// swimming
 	bool waterwalkingboots = false;
 	if ( stats[PLAYER_NUM]->shoes != NULL )
@@ -244,11 +276,130 @@ bool isPlayerSwimming(Entity* my)
 	return swimming;
 }
 
-void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelta)
+bool Player::PlayerMovement_t::handleQuickTurn(bool useRefreshRateDelta)
 {
-	if ( !my )
+	if ( !players[player.playernum]->entity || !bDoingQuickTurn )
+	{
+		quickTurnRotation = 0.0;
+		bDoingQuickTurn = false;
+		quickTurnStartTicks = 0;
+		return false;
+	}
+
+	Entity* my = players[player.playernum]->entity;
+	double refreshRateDelta = 1.0;
+	if ( useRefreshRateDelta && fps > 0.0 )
+	{
+		refreshRateDelta *= TICKS_PER_SECOND / fps;
+	}
+
+	if ( abs(quickTurnRotation) > 0.001 )
+	{
+		int dir = ((quickTurnRotation > 0) ? 1 : -1);
+		if ( my->ticks - quickTurnStartTicks < 15 )
+		{
+			PLAYER_ROTX = dir * players[player.playernum]->settings.quickTurnSpeed;
+		}
+		else
+		{
+			PLAYER_ROTX = std::max(0.01, (dir * PI / 15) * pow(0.99, my->ticks - quickTurnStartTicks));
+		}
+
+		if ( dir == 1 )
+		{
+			quickTurnRotation = std::max(0.0, quickTurnRotation - PLAYER_ROTX * refreshRateDelta);
+		}
+		else
+		{
+			quickTurnRotation = std::min(0.0, quickTurnRotation - PLAYER_ROTX * refreshRateDelta);
+		}
+		return true;
+	}
+	else
+	{
+		bDoingQuickTurn = false;
+		return false;
+	}
+}
+
+void Player::PlayerMovement_t::startQuickTurn()
+{
+	if ( !players[player.playernum]->entity || bDoingQuickTurn )
 	{
 		return;
+	}
+
+	Entity* my = players[player.playernum]->entity;
+
+	if ( gamePaused || !stats[PLAYER_NUM] || !my->isMobile() )
+	{
+		return;
+	}
+
+	quickTurnRotation = PI * players[PLAYER_NUM]->settings.quickTurnDirection;
+	if ( stats[PLAYER_NUM]->EFFECTS[EFF_CONFUSED] )
+	{
+		quickTurnRotation = -quickTurnRotation;
+	}
+
+	quickTurnStartTicks = players[PLAYER_NUM]->entity->ticks;
+	bDoingQuickTurn = true;
+	// code for moving left -> turn left, moving right -> turn right
+	// maybe better for 1 direction only.
+	/*if ( abs(PLAYER_VELY) > 0.001 || abs(PLAYER_VELX) > 0.001 )
+	{
+	real_t tangent = atan2(PLAYER_VELY, PLAYER_VELX);
+	real_t playerFacingDir = my->yaw;
+	while ( playerFacingDir >= 2 * PI )
+	{
+	playerFacingDir -= PI * 2;
+	}
+	while ( tangent < -PI )
+	{
+	playerFacingDir += PI * 2;
+	}
+	real_t difference = tangent - playerFacingDir;
+	if ( difference < -PI )
+	{
+	difference += 2 * PI;
+	}
+	if ( difference > PI )
+	{
+	difference -= 2 * PI;
+	}
+
+	if ( difference >= 0.0f )
+	{
+	quickTurnRotation[playernum] = PI;
+	}
+	if ( difference < 0.0f )
+	{
+	quickTurnRotation[playernum] = -PI;
+	}
+	//messagePlayer(0, "%.2f, %.2f, %.2f", tangent, playerFacingDir, (PI - abs(abs(playerFacingDir - tangent) - PI)) * 2);
+	}*/
+}
+
+void Player::PlayerMovement_t::handlePlayerCameraUpdate(bool useRefreshRateDelta)
+{
+	if ( !players[player.playernum]->entity )
+	{
+		return;
+	}
+
+	Entity* my = players[player.playernum]->entity;
+	int playernum = player.playernum;
+
+	real_t mousex_relative = mousexrel;
+	real_t mousey_relative = mouseyrel;
+
+	mousex_relative = inputs.getMouseFloat(playernum, Inputs::ANALOGUE_XREL);
+	mousey_relative = inputs.getMouseFloat(playernum, Inputs::ANALOGUE_YREL);
+
+	real_t mouse_speed = mousespeed;
+	if ( inputs.getVirtualMouse(PLAYER_NUM)->lastMovementFromController )
+	{
+		mouse_speed = 32.0;
 	}
 
 	double refreshRateDelta = 1.0;
@@ -256,27 +407,41 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 	{
 		refreshRateDelta *= TICKS_PER_SECOND / fps;
 	}
+	if ( players[playernum]->shootmode && !command )
+	{
+		if ( inputs.bControllerInputPressed(playernum, INJOY_MENU_CHEST_GRAB_ALL) )
+		{
+			inputs.controllerClearInput(playernum, INJOY_MENU_CHEST_GRAB_ALL);
+			startQuickTurn();
+		}
+	}
 
 	// rotate
 	if ( !command && my->isMobile() )
 	{
-		if ( !stats[PLAYER_NUM]->EFFECTS[EFF_CONFUSED] )
+		if ( !stats[playernum]->EFFECTS[EFF_CONFUSED] )
 		{
 			if ( noclip )
 			{
-				my->z -= (*inputPressed(impulses[IN_TURNR]) - *inputPressed(impulses[IN_TURNL])) * .25 * refreshRateDelta;
+				my->z -= (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_TURNR]) - *inputPressedForPlayer(PLAYER_NUM, impulses[IN_TURNL])) * .25 * refreshRateDelta;
 			}
 			else
 			{
-				my->yaw += (*inputPressed(impulses[IN_TURNR]) - *inputPressed(impulses[IN_TURNL])) * .05 * refreshRateDelta;
+				my->yaw += (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_TURNR]) - *inputPressedForPlayer(PLAYER_NUM, impulses[IN_TURNL])) * .05 * refreshRateDelta;
 			}
 		}
 		else
 		{
-			my->yaw += (*inputPressed(impulses[IN_TURNL]) - *inputPressed(impulses[IN_TURNR])) * .05 * refreshRateDelta;
+			my->yaw += (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_TURNL]) - *inputPressedForPlayer(PLAYER_NUM, impulses[IN_TURNR])) * .05 * refreshRateDelta;
 		}
 	}
-	if ( shootmode && !gamePaused )
+	bool shootmode = players[PLAYER_NUM]->shootmode;
+
+	if ( handleQuickTurn(useRefreshRateDelta) )
+	{
+		// do nothing, override rotations.
+	}
+	else if ( shootmode && !gamePaused )
 	{
 		if ( !stats[PLAYER_NUM]->EFFECTS[EFF_CONFUSED] )
 		{
@@ -284,7 +449,7 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 			{
 				if ( my->isMobile() )
 				{
-					PLAYER_ROTX += mousexrel * .006 * (mousespeed / 128.f);
+					PLAYER_ROTX += mousex_relative * .006 * (mouse_speed / 128.f);
 				}
 				if ( !disablemouserotationlimit )
 				{
@@ -298,11 +463,11 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 				{
 					if ( disablemouserotationlimit )
 					{
-						PLAYER_ROTX = mousexrel * .01f * (mousespeed / 128.f);
+						PLAYER_ROTX = mousex_relative * .01f * (mouse_speed / 128.f);
 					}
 					else
 					{
-						PLAYER_ROTX = std::min<float>(std::max<float>(-0.35f, mousexrel * .01f * (mousespeed / 128.f)), 0.35f);
+						PLAYER_ROTX = std::min<float>(std::max<float>(-0.35f, mousex_relative * .01f * (mouse_speed / 128.f)), 0.35f);
 					}
 				}
 				else
@@ -317,7 +482,7 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 			{
 				if ( my->isMobile() )
 				{
-					PLAYER_ROTX -= mousexrel * .006f * (mousespeed / 128.f);
+					PLAYER_ROTX -= mousex_relative * .006f * (mouse_speed / 128.f);
 				}
 				if ( !disablemouserotationlimit )
 				{
@@ -331,11 +496,11 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 				{
 					if ( disablemouserotationlimit )
 					{
-						PLAYER_ROTX = -mousexrel * .01f * (mousespeed / 128.f);
+						PLAYER_ROTX = -mousex_relative * .01f * (mouse_speed / 128.f);
 					}
 					else
 					{
-						PLAYER_ROTX = -std::min<float>(std::max<float>(-0.35f, mousexrel * .01f * (mousespeed / 128.f)), 0.35f);
+						PLAYER_ROTX = -std::min<float>(std::max<float>(-0.35f, mousex_relative * .01f * (mouse_speed / 128.f)), 0.35f);
 					}
 				}
 				else
@@ -345,6 +510,7 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 			}
 		}
 	}
+
 	my->yaw += PLAYER_ROTX * refreshRateDelta;
 	while ( my->yaw >= PI * 2 )
 	{
@@ -354,6 +520,7 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 	{
 		my->yaw += PI * 2;
 	}
+
 	if ( smoothmouse )
 	{
 		PLAYER_ROTX *= pow(0.5, refreshRateDelta);
@@ -368,11 +535,11 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 	{
 		if ( !stats[PLAYER_NUM]->EFFECTS[EFF_CONFUSED] )
 		{
-			my->pitch += (*inputPressed(impulses[IN_DOWN]) - *inputPressed(impulses[IN_UP])) * .05 * refreshRateDelta;
+			my->pitch += (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_DOWN]) - *inputPressedForPlayer(PLAYER_NUM, impulses[IN_UP])) * .05 * refreshRateDelta;
 		}
 		else
 		{
-			my->pitch += (*inputPressed(impulses[IN_UP]) - *inputPressed(impulses[IN_DOWN])) * .05 * refreshRateDelta;
+			my->pitch += (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_UP]) - *inputPressedForPlayer(PLAYER_NUM, impulses[IN_DOWN])) * .05 * refreshRateDelta;
 		}
 	}
 	if ( shootmode && !gamePaused )
@@ -383,7 +550,7 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 			{
 				if ( my->isMobile() )
 				{
-					PLAYER_ROTY += mouseyrel * .006 * (mousespeed / 128.f) * (reversemouse * 2 - 1);
+					PLAYER_ROTY += mousey_relative * .006 * (mouse_speed / 128.f) * (reversemouse * 2 - 1);
 				}
 				PLAYER_ROTY = fmin(fmax(-0.35, PLAYER_ROTY), 0.35);
 				PLAYER_ROTY *= pow(0.5, refreshRateDelta);
@@ -393,7 +560,7 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 				if ( my->isMobile() )
 				{
 					PLAYER_ROTY = std::min<float>(std::max<float>(-0.35f, 
-						mouseyrel * .01f * (mousespeed / 128.f) * (reversemouse * 2 - 1)), 0.35f);
+						mousey_relative * .01f * (mouse_speed / 128.f) * (reversemouse * 2 - 1)), 0.35f);
 				}
 				else
 				{
@@ -407,7 +574,7 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 			{
 				if ( my->isMobile() )
 				{
-					PLAYER_ROTY -= mouseyrel * .006f * (mousespeed / 128.f) * (reversemouse * 2 - 1);
+					PLAYER_ROTY -= mousey_relative * .006f * (mouse_speed / 128.f) * (reversemouse * 2 - 1);
 				}
 				PLAYER_ROTY = fmin(fmax(-0.35f, PLAYER_ROTY), 0.35f);
 				PLAYER_ROTY *= pow(0.5, refreshRateDelta);
@@ -417,7 +584,7 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 				if ( my->isMobile() )
 				{
 					PLAYER_ROTY = std::min<float>(std::max<float>(-0.35f, 
-						mouseyrel * .01f * (mousespeed / 128.f) * (reversemouse * 2 - 1)), 0.35f);
+						mousey_relative * .01f * (mouse_speed / 128.f) * (reversemouse * 2 - 1)), 0.35f);
 				}
 				else
 				{
@@ -460,13 +627,17 @@ void handlePlayerCameraUpdate(Entity* my, int playernum, bool useRefreshRateDelt
 	}
 }
 
-void handlePlayerCameraBobbing(Entity* my, int playernum, bool useRefreshRateDelta)
+void Player::PlayerMovement_t::handlePlayerCameraBobbing(bool useRefreshRateDelta)
 {
-	if ( !my )
+	if ( !players[player.playernum]->entity )
 	{
 		return;
 	}
-	bool swimming = isPlayerSwimming(my);
+
+	Entity* my = players[player.playernum]->entity;
+	int playernum = player.playernum;
+
+	bool swimming = isPlayerSwimming();
 
 	double refreshRateDelta = 1.0;
 	if ( useRefreshRateDelta && fps > 0.0 )
@@ -488,10 +659,12 @@ void handlePlayerCameraBobbing(Entity* my, int playernum, bool useRefreshRateDel
 				PLAYER_BOBMOVE -= .03 * refreshRateDelta;
 			}
 		}
-		else if ( ((*inputPressed(impulses[IN_FORWARD]) 
-				|| *inputPressed(impulses[IN_BACK])) 
-				|| (*inputPressed(impulses[IN_RIGHT]) - *inputPressed(impulses[IN_LEFT])) 
-				|| (game_controller && (game_controller->getLeftXPercent() || game_controller->getLeftYPercent()))) 
+		else if ( ((*inputPressedForPlayer(PLAYER_NUM, impulses[IN_FORWARD])
+				|| *inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK]))
+				|| (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_RIGHT]) - *inputPressedForPlayer(PLAYER_NUM, impulses[IN_LEFT]))
+				|| (inputs.hasController(PLAYER_NUM) 
+					&& (inputs.getController(PLAYER_NUM)->getLeftXPercentForPlayerMovement() 
+						|| inputs.getController(PLAYER_NUM)->getLeftYPercentForPlayerMovement())))
 			&& !command && !swimming )
 		{
 			if ( !(stats[PLAYER_NUM]->defending || stats[PLAYER_NUM]->sneaking == 0) )
@@ -524,14 +697,14 @@ void handlePlayerCameraBobbing(Entity* my, int playernum, bool useRefreshRateDel
 			PLAYER_BOBMODE = 0;
 		}
 
-		if ( !command && !swimming && (*inputPressed(impulses[IN_RIGHT]) - *inputPressed(impulses[IN_LEFT])) )
+		if ( !command && !swimming && (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_RIGHT]) - *inputPressedForPlayer(PLAYER_NUM, impulses[IN_LEFT])) )
 		{
-			if ( (*inputPressed(impulses[IN_RIGHT]) && !(*inputPressed(impulses[IN_BACK])))
-				|| (*inputPressed(impulses[IN_LEFT]) && (*inputPressed(impulses[IN_BACK]))) )
+			if ( (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_RIGHT]) && !(*inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK])))
+				|| (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_LEFT]) && (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK]))) )
 			{
 				PLAYER_SIDEBOB += 0.01 * refreshRateDelta;
 				real_t angle = PI / 32;
-				if ( *inputPressed(impulses[IN_BACK]) )
+				if ( *inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK]) )
 				{
 					angle = PI / 64;
 				}
@@ -540,12 +713,12 @@ void handlePlayerCameraBobbing(Entity* my, int playernum, bool useRefreshRateDel
 					PLAYER_SIDEBOB = angle;
 				}
 			}
-			else if ( (*inputPressed(impulses[IN_LEFT]) && !(*inputPressed(impulses[IN_BACK])))
-				|| (*inputPressed(impulses[IN_RIGHT]) && (*inputPressed(impulses[IN_BACK]))) )
+			else if ( (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_LEFT]) && !(*inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK])))
+				|| (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_RIGHT]) && (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK]))) )
 			{
 				PLAYER_SIDEBOB -= 0.01 * refreshRateDelta;
 				real_t angle = -PI / 32;
-				if ( *inputPressed(impulses[IN_BACK]) )
+				if ( *inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK]) )
 				{
 					angle = -PI / 64;
 				}
@@ -628,12 +801,14 @@ void handlePlayerCameraBobbing(Entity* my, int playernum, bool useRefreshRateDel
 	}
 }
 
-void handlePlayerMovement(Entity* my, int playernum, bool useRefreshRateDelta)
+void Player::PlayerMovement_t::handlePlayerMovement(bool useRefreshRateDelta)
 {
-	if ( !my )
+	if ( !players[player.playernum]->entity )
 	{
 		return;
 	}
+
+	Entity* my = players[player.playernum]->entity;
 
 	double refreshRateDelta = 1.0;
 	if ( useRefreshRateDelta && fps > 0.0 )
@@ -713,8 +888,8 @@ void handlePlayerMovement(Entity* my, int playernum, bool useRefreshRateDelta)
 			if ( !stats[PLAYER_NUM]->EFFECTS[EFF_CONFUSED] )
 			{
 				//Normal controls.
-				x_force = (*inputPressed(impulses[IN_RIGHT]) - *inputPressed(impulses[IN_LEFT]));
-				y_force = (*inputPressed(impulses[IN_FORWARD]) - (double)* inputPressed(impulses[IN_BACK]) * backpedalMultiplier);
+				x_force = (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_RIGHT]) - *inputPressedForPlayer(PLAYER_NUM, impulses[IN_LEFT]));
+				y_force = (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_FORWARD]) - (double)* inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK]) * backpedalMultiplier);
 				if ( noclip )
 				{
 					if ( keystatus[SDL_SCANCODE_LSHIFT] )
@@ -727,22 +902,22 @@ void handlePlayerMovement(Entity* my, int playernum, bool useRefreshRateDelta)
 			else
 			{
 				//Confused controls.
-				x_force = (*inputPressed(impulses[IN_LEFT]) - *inputPressed(impulses[IN_RIGHT]));
-				y_force = (*inputPressed(impulses[IN_BACK]) - (double)* inputPressed(impulses[IN_FORWARD]) * backpedalMultiplier);
+				x_force = (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_LEFT]) - *inputPressedForPlayer(PLAYER_NUM, impulses[IN_RIGHT]));
+				y_force = (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK]) - (double)* inputPressedForPlayer(PLAYER_NUM, impulses[IN_FORWARD]) * backpedalMultiplier);
 			}
 
-			if ( game_controller && !*inputPressed(impulses[IN_LEFT]) && !*inputPressed(impulses[IN_RIGHT]) )
+			if ( inputs.hasController(PLAYER_NUM) && !*inputPressedForPlayer(PLAYER_NUM, impulses[IN_LEFT]) && !*inputPressedForPlayer(PLAYER_NUM, impulses[IN_RIGHT]) )
 			{
-				x_force = game_controller->getLeftXPercent();
+				x_force = inputs.getController(PLAYER_NUM)->getLeftXPercentForPlayerMovement();
 
 				if ( stats[PLAYER_NUM]->EFFECTS[EFF_CONFUSED] )
 				{
 					x_force *= -1;
 				}
 			}
-			if ( game_controller && !*inputPressed(impulses[IN_FORWARD]) && !*inputPressed(impulses[IN_BACK]) )
+			if ( inputs.hasController(PLAYER_NUM) && !*inputPressedForPlayer(PLAYER_NUM, impulses[IN_FORWARD]) && !*inputPressedForPlayer(PLAYER_NUM, impulses[IN_BACK]) )
 			{
-				y_force = game_controller->getLeftYPercent();
+				y_force = inputs.getController(PLAYER_NUM)->getLeftYPercentForPlayerMovement();
 
 				if ( stats[PLAYER_NUM]->EFFECTS[EFF_CONFUSED] )
 				{
@@ -857,7 +1032,7 @@ void handlePlayerMovement(Entity* my, int playernum, bool useRefreshRateDelta)
 			amuletwaterbreathing = true;
 		}
 	}
-	bool swimming = isPlayerSwimming(my);
+	bool swimming = isPlayerSwimming();
 	if ( swimming && !amuletwaterbreathing )
 	{
 		PLAYER_VELX *= (((stats[PLAYER_NUM]->PROFICIENCIES[PRO_SWIMMING] / 100.f) * 50.f) + 50) / 100.f;
@@ -877,14 +1052,17 @@ void handlePlayerMovement(Entity* my, int playernum, bool useRefreshRateDelta)
 	}
 }
 
-void handlePlayerCameraPosition(Entity* my, int playernum, bool useRefreshRateDelta)
+void Player::PlayerMovement_t::handlePlayerCameraPosition(bool useRefreshRateDelta)
 {
-	if ( !my )
+	if ( !players[player.playernum]->entity )
 	{
 		return;
 	}
+
+	Entity* my = players[player.playernum]->entity;
+
 	int playerRace = my->getMonsterTypeFromSprite();
-	bool swimming = isPlayerSwimming(my);
+	bool swimming = isPlayerSwimming();
 
 	double refreshRateDelta = 1.0;
 	if ( useRefreshRateDelta && fps > 0.0 )
@@ -991,7 +1169,7 @@ void actPlayer(Entity* my)
 			//messagePlayer(0, "Lorem ipsum dolor sit amet, dico accusam reprehendunt ne mea, ea est illum tincidunt voluptatibus. Ne labore voluptua eos, nostro fierent mnesarchum an mei, cu mea dolor verear epicuri. Est id iriure principes, unum cotidieque qui te. An sit tractatos complectitur.");
 		}
 	}
-	if ( autoLimbReload && ticks % 20 == 0 && (PLAYER_NUM == clientnum || splitscreen) )
+	if ( autoLimbReload && ticks % 20 == 0 && (PLAYER_NUM == clientnum) )
 	{
 		consoleCommand("/reloadlimbs");
 	}
@@ -1096,24 +1274,24 @@ void actPlayer(Entity* my)
 		}
 	}
 
-	if ( PLAYER_NUM == clientnum || splitscreen )
+	if ( players[PLAYER_NUM]->isLocalPlayer() ) // TODO: hotbar code splitscreen
 	{
 		if ( stats[PLAYER_NUM]->type != HUMAN && stats[PLAYER_NUM]->EFFECTS[EFF_SHAPESHIFT] )
 		{
-			if ( swapHotbarOnShapeshift == 0 )
+			if ( players[PLAYER_NUM]->hotbar.swapHotbarOnShapeshift == 0 )
 			{
-				initShapeshiftHotbar();
+				initShapeshiftHotbar(PLAYER_NUM);
 			}
-			else if ( swapHotbarOnShapeshift != stats[PLAYER_NUM]->type )
+			else if ( players[PLAYER_NUM]->hotbar.swapHotbarOnShapeshift != stats[PLAYER_NUM]->type )
 			{
 				// we likely transformed while still shapeshifted, fully init the hotbar code again.
-				deinitShapeshiftHotbar();
-				initShapeshiftHotbar();
+				deinitShapeshiftHotbar(PLAYER_NUM);
+				initShapeshiftHotbar(PLAYER_NUM);
 			}
 		}
-		else if ( !stats[PLAYER_NUM]->EFFECTS[EFF_SHAPESHIFT] && swapHotbarOnShapeshift > 0 )
+		else if ( !stats[PLAYER_NUM]->EFFECTS[EFF_SHAPESHIFT] && players[PLAYER_NUM]->hotbar.swapHotbarOnShapeshift > 0 )
 		{
-			deinitShapeshiftHotbar();
+			deinitShapeshiftHotbar(PLAYER_NUM);
 		}
 	}
 
@@ -1142,7 +1320,7 @@ void actPlayer(Entity* my)
 
 	if ( multiplayer == CLIENT )
 	{
-		if ( PLAYER_NUM != clientnum )
+		if ( !players[PLAYER_NUM]->isLocalPlayer() )
 		{
 			my->flags[UPDATENEEDED] = true;
 		}
@@ -1190,7 +1368,7 @@ void actPlayer(Entity* my)
 		nametag->setUID(-3);
 
 		// hud weapon
-		if ( PLAYER_NUM == clientnum || splitscreen )
+		if ( players[PLAYER_NUM]->isLocalPlayer() )
 		{
 			if ( multiplayer == CLIENT )
 			{
@@ -1222,7 +1400,7 @@ void actPlayer(Entity* my)
 			entity->skill[2] = PLAYER_NUM;
 			entity->behavior = &actLeftHandMagic;
 			entity->focalz = -4;
-			magicLeftHand = entity;
+			players[PLAYER_NUM]->hud.magicLeftHand = entity;
 			//Right hand.
 			entity = newEntity(-1, 1, map.entities, nullptr); //HUD entity.
 			entity->flags[PASSABLE] = true;
@@ -1232,7 +1410,7 @@ void actPlayer(Entity* my)
 			entity->skill[2] = PLAYER_NUM;
 			entity->behavior = &actRightHandMagic;
 			entity->focalz = -4;
-			magicRightHand = entity;
+			players[PLAYER_NUM]->hud.magicRightHand = entity;
 			my->bodyparts.push_back(entity);
 
 			// hud shield
@@ -1577,7 +1755,7 @@ void actPlayer(Entity* my)
 	if ( !intro )
 	{
 		PLAYER_ALIVETIME++;
-		if ( PLAYER_NUM == clientnum || splitscreen )
+		if ( PLAYER_NUM == clientnum ) // specifically the host - in splitscreen we only process this once for all players.
 		{
 			clientplayer = my->getUID();
 			if ( !strcmp(map.name, "Boss") && !my->skill[29] )
@@ -1602,8 +1780,8 @@ void actPlayer(Entity* my)
 					if ( PLAYER_ALIVETIME == 300 )
 					{
 						playSound(185, 128);
-						messagePlayerColor(clientnum, color, language[537]);
-						messagePlayerColor(clientnum, color, language[89]);
+						messageLocalPlayersColor(color, language[537]);
+						messageLocalPlayersColor(color, language[89]);
 					}
 				}
 			}
@@ -1612,41 +1790,42 @@ void actPlayer(Entity* my)
 				if ( PLAYER_ALIVETIME == 300 && !MFLAG_DISABLEMESSAGES )
 				{
 					// five seconds in, herx chimes in (maybe)
+					// replicate the messagePlayer to all splitscreen clients so it's not randomly different between screens
 					my->playerLevelEntrySpeech = 0;
 					if ( currentlevel == 0 && !secretlevel )
 					{
 						int speech = rand() % 3;
 						playSound(126 + speech, 128);
-						messagePlayerColor(clientnum, color, language[537]);
-						messagePlayerColor(clientnum, color, language[77 + speech]);
+						messageLocalPlayersColor(color, language[537]);
+						messageLocalPlayersColor(color, language[77 + speech]);
 					}
 					else if ( currentlevel == 1 && !secretlevel )
 					{
 						int speech = rand() % 3;
 						playSound(117 + speech, 128);
-						messagePlayerColor(clientnum, color, language[537]);
-						messagePlayerColor(clientnum, color, language[70 + speech]);
+						messageLocalPlayersColor(color, language[537]);
+						messageLocalPlayersColor(color, language[70 + speech]);
 					}
 					else if ( currentlevel == 5 && !secretlevel )
 					{
 						int speech = rand() % 2;
 						playSound(156 + speech, 128);
-						messagePlayerColor(clientnum, color, language[537]);
-						messagePlayerColor(clientnum, color, language[83 + speech]);
+						messageLocalPlayersColor(color, language[537]);
+						messageLocalPlayersColor(color, language[83 + speech]);
 					}
 					else if ( currentlevel == 10 && !secretlevel )
 					{
 						int speech = rand() % 2;
 						playSound(158 + speech, 128);
-						messagePlayerColor(clientnum, color, language[537]);
-						messagePlayerColor(clientnum, color, language[85 + speech]);
+						messageLocalPlayersColor(color, language[537]);
+						messageLocalPlayersColor(color, language[85 + speech]);
 					}
 					else if ( currentlevel == 15 && !secretlevel )
 					{
 						int speech = rand() % 2;
 						playSound(160 + speech, 128);
-						messagePlayerColor(clientnum, color, language[537]);
-						messagePlayerColor(clientnum, color, language[87 + speech]);
+						messageLocalPlayersColor(color, language[537]);
+						messageLocalPlayersColor(color, language[87 + speech]);
 					}
 					else if ( currentlevel == 26 && !secretlevel )
 					{
@@ -1655,18 +1834,18 @@ void actPlayer(Entity* my)
 						{
 							case 1:
 								playSound(341, blueSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2615]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2615]);
 								break;
 							case 2:
 								playSound(343, orangeSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2617]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2617]);
 								break;
 							case 3:
 								playSound(346, orangeSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2620]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2620]);
 								break;
 						}
 						my->playerLevelEntrySpeech = speech;
@@ -1678,18 +1857,18 @@ void actPlayer(Entity* my)
 						{
 							case 1:
 								playSound(349, blueSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2629]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2629]);
 								break;
 							case 2:
 								playSound(352, orangeSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2632]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2632]);
 								break;
 							case 3:
 								playSound(354, blueSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2634]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2634]);
 								break;
 						}
 						my->playerLevelEntrySpeech = speech;
@@ -1701,8 +1880,8 @@ void actPlayer(Entity* my)
 						{
 							case 1:
 								playSound(356, blueSpeechVolume - 16);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2636]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2636]);
 								break;
 						}
 						my->playerLevelEntrySpeech = speech;
@@ -1714,8 +1893,8 @@ void actPlayer(Entity* my)
 						{
 							case 1:
 								playSound(358, blueSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2638]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2638]);
 								break;
 						}
 						my->playerLevelEntrySpeech = speech;
@@ -1727,13 +1906,13 @@ void actPlayer(Entity* my)
 						{
 							case 1:
 								playSound(360, orangeSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2640]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2640]);
 								break;
 							case 2:
 								playSound(362, blueSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2642]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2642]);
 								break;
 						}
 						my->playerLevelEntrySpeech = speech;
@@ -1745,8 +1924,8 @@ void actPlayer(Entity* my)
 						{
 							case 1:
 								playSound(364, orangeSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[537]);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2644]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[537]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2644]);
 								break;
 						}
 						my->playerLevelEntrySpeech = speech;
@@ -1757,8 +1936,8 @@ void actPlayer(Entity* my)
 						{
 							int speech = rand() % 3;
 							playSound(123 + speech, 128);
-							messagePlayerColor(clientnum, color, language[537]);
-							messagePlayerColor(clientnum, color, language[74 + speech]);
+							messageLocalPlayersColor(color, language[537]);
+							messageLocalPlayersColor(color, language[74 + speech]);
 						}
 						else
 						{
@@ -1767,18 +1946,18 @@ void actPlayer(Entity* my)
 							{
 								case 1:
 									playSound(366, blueSpeechVolume);
-									messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[537]);
-									messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2623]);
+									messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[537]);
+									messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2623]);
 									break;
 								case 2:
 									playSound(368, orangeSpeechVolume);
-									messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[537]);
-									messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2625]);
+									messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[537]);
+									messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2625]);
 									break;
 								case 3:
 									playSound(370, blueSpeechVolume);
-									messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[537]);
-									messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2627]);
+									messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[537]);
+									messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2627]);
 									break;
 							}
 							my->playerLevelEntrySpeech = speech;
@@ -1791,13 +1970,13 @@ void actPlayer(Entity* my)
 					if ( currentlevel == 1 && !secretlevel )
 					{
 						playSound(120 + rand() % 3, 128);
-						messagePlayerColor(clientnum, color, language[73]);
+						messageLocalPlayersColor(color, language[73]);
 					}
 					else if ( minotaurlevel && currentlevel < 25 )
 					{
 						int speech = rand() % 3;
 						playSound(129 + speech, 128);
-						messagePlayerColor(clientnum, color, language[80 + speech]);
+						messageLocalPlayersColor(color, language[80 + speech]);
 					}
 				}
 				else if ( my->playerLevelEntrySpeech > 0 )
@@ -1805,7 +1984,10 @@ void actPlayer(Entity* my)
 					my->playerLevelEntrySpeechSecond();
 				}
 			}
+		}
 
+		if ( players[PLAYER_NUM]->isLocalPlayer() )
+		{
 			// shurar the talking mace
 			if ( stats[PLAYER_NUM]->weapon )
 			{
@@ -1813,14 +1995,14 @@ void actPlayer(Entity* my)
 				{
 					if ( PLAYER_ALIVETIME % 420 == 0 )
 					{
-						messagePlayerColor(clientnum, color, language[538 + rand() % 32]);
+						messagePlayerColor(PLAYER_NUM, color, language[538 + rand() % 32]);
 					}
 				}
 			}
 
-			if ( monsterEmoteGimpTimer > 0 )
+			if ( players[PLAYER_NUM]->movement.monsterEmoteGimpTimer > 0 )
 			{
-				--monsterEmoteGimpTimer;
+				--players[PLAYER_NUM]->movement.monsterEmoteGimpTimer;
 			}
 		}
 		if ( multiplayer == SERVER )
@@ -1912,7 +2094,7 @@ void actPlayer(Entity* my)
 		}
 		if ( multiplayer == CLIENT && client_classes[PLAYER_NUM] == CLASS_ACCURSED )
 		{
-			if ( PLAYER_NUM == clientnum && my->playerVampireCurse == 1 )
+			if ( players[PLAYER_NUM]->isLocalPlayer() && my->playerVampireCurse == 1 )
 			{
 				stats[PLAYER_NUM]->EFFECTS_TIMERS[EFF_VAMPIRICAURA] = -2;
 			}
@@ -1923,6 +2105,360 @@ void actPlayer(Entity* my)
 		}
 	}
 
+	// debug stuff
+	if ( !command && keystatus[SDL_SCANCODE_O] )
+	{
+		consoleCommand("/facebaralternate");
+		keystatus[SDL_SCANCODE_O] = 0;
+	}
+	if ( inputs.hasController(PLAYER_NUM) )
+	{
+		if ( keystatus[SDL_SCANCODE_KP_1] )
+		{
+			keystatus[SDL_SCANCODE_KP_1] = 0;
+			inputs.rumble(PLAYER_NUM, GameController::Haptic_t::RUMBLE_NORMAL, 1000, 1000, 1 * TICKS_PER_SECOND, 0);
+		}
+		if ( keystatus[SDL_SCANCODE_KP_2] )
+		{
+			keystatus[SDL_SCANCODE_KP_2] = 0;
+			inputs.rumble(PLAYER_NUM, GameController::Haptic_t::RUMBLE_DEATH, 30000, 30000, 2 * TICKS_PER_SECOND, 0);
+			//SDL_HapticRumblePlay(inputs.getController(PLAYER_NUM)->getHaptic(), 0.5, 2000);
+		}
+		if ( keystatus[SDL_SCANCODE_KP_3] )
+		{
+			keystatus[SDL_SCANCODE_KP_3] = 0;
+			inputs.rumble(PLAYER_NUM, GameController::Haptic_t::RUMBLE_BOULDER, 30000, 30000, 3 * TICKS_PER_SECOND, 0);
+		}
+		if ( keystatus[SDL_SCANCODE_KP_4] )
+		{
+			inputs.rumble(PLAYER_NUM, GameController::Haptic_t::RUMBLE_TMP, 30000, 30000, 1 * TICKS_PER_SECOND, 0);
+			keystatus[SDL_SCANCODE_KP_4] = 0;
+		}
+		if ( keystatus[SDL_SCANCODE_KP_5] )
+		{
+			inputs.rumble(PLAYER_NUM, GameController::Haptic_t::RUMBLE_TMP, 30000, 30000, 3 * TICKS_PER_SECOND, 0);
+			keystatus[SDL_SCANCODE_KP_5] = 0;
+		}
+		if ( keystatus[SDL_SCANCODE_KP_6] )
+		{
+			inputs.rumble(PLAYER_NUM, GameController::Haptic_t::RUMBLE_TMP, 30000, 30000, 10 * TICKS_PER_SECOND, 0);
+			keystatus[SDL_SCANCODE_KP_6] = 0;
+		}
+		/*if ( inputs.bControllerInputPressed(PLAYER_NUM, INJOY_GAME_ATTACK) )
+		{
+			inputs.controllerClearRawInput(PLAYER_NUM, INJOY_GAME_ATTACK);
+			inputs.rumble(PLAYER_NUM, inputs.getController(PLAYER_NUM)->haptics.playerOnHit.smallMagnitude,
+				inputs.getController(PLAYER_NUM)->haptics.playerOnHit.largeMagnitude, inputs.getController(PLAYER_NUM)->haptics.playerOnHit.length);
+		}*/
+		//messagePlayer(PLAYER_NUM, "%d | %d | %d", inputs.getController(PLAYER_NUM)->haptics.playerOnHit.smallMagnitude,
+		//	inputs.getController(PLAYER_NUM)->haptics.playerOnHit.largeMagnitude, inputs.getController(PLAYER_NUM)->haptics.playerOnHit.length);
+	}
+
+	//if ( keystatus[SDL_SCANCODE_F1] )
+	//{
+	//	keystatus[SDL_SCANCODE_F1] = 0;
+	//	auto potion = potionStandardAppearanceMap[rand() % 3];
+	//	Item* item = newItem(static_cast<ItemType>(potion.first), static_cast<Status>(4), -1 + rand() % 3, 1, 0, false, NULL);
+	//	useItem(item, PLAYER_NUM, my);
+	//}
+	//if ( keystatus[SDL_SCANCODE_F2] )
+	//{
+	//	keystatus[SDL_SCANCODE_F2] = 0;
+	//	auto potion = potionStandardAppearanceMap[rand() % potionStandardAppearanceMap.size()];
+	//	if ( potion.first >= POTION_FIRESTORM && potion.first <= POTION_ICESTORM && rand() % 10 <= 7 )
+	//	{
+	//		potion = potionStandardAppearanceMap[rand() % potionStandardAppearanceMap.size() - 4];
+	//	}
+	//	Item* item = newItem(static_cast<ItemType>(potion.first), static_cast<Status>(4), -1 + rand() % 3, 1, 0, false, NULL);
+	//	useItem(item, PLAYER_NUM, my);
+	//}
+	//if ( keystatus[SDL_SCANCODE_F3] )
+	//{
+	//	keystatus[SDL_SCANCODE_F3] = 0;
+	//	int limitX = map.width;
+	//	int limitY = map.height;
+	//	if ( !strncmp(map.name, "Mages Guild", 11) )
+	//	{
+	//		limitX = map.width / 2;
+	//		limitY = map.height / 2;
+	//	}
+	//	for ( int y = 1; y < limitY; ++y )
+	//	{
+	//		for ( int x = 1; x < limitX; ++x )
+	//		{
+	//			if ( map.tiles[OBSTACLELAYER + y * MAPLAYERS + x * map.height * MAPLAYERS] == 0
+	//				&& map.tiles[y * MAPLAYERS + x * map.height * MAPLAYERS] != 0 )
+	//			{
+	//				if ( rand() % 20 == 0 )
+	//				{
+	//					Entity* rock = newEntity(-1, 1, map.entities, nullptr); //Rock entity.
+	//					//rock->flags[INVISIBLE] = true;
+	//					rock->flags[UPDATENEEDED] = true;
+	//					rock->x = x * 16 + 4 + rand() % 8;
+	//					rock->y = y * 16 + 4 + rand() % 8;
+	//					rock->z = -20 + rand() % 12;
+	//					rock->sizex = 4;
+	//					rock->sizey = 4;
+	//					rock->yaw = rand() % 360 * PI / 180;
+	//					rock->vel_x = (rand() % 20 - 10) / 10.0;
+	//					rock->vel_y = (rand() % 20 - 10) / 10.0;
+	//					rock->vel_z = -.25 - (rand() % 5) / 10.0;
+	//					rock->flags[PASSABLE] = true;
+	//					rock->behavior = &actItem;
+	//					rock->flags[USERFLAG1] = true; // no collision: helps performance
+	//					rock->skill[10] = POTION_BOOZE;    // type
+	//					switch ( rand() % 6 )
+	//					{
+	//						case 4:
+	//							rock->skill[10] = FOOD_CHEESE;    // type
+	//							break;
+	//						case 5:
+	//							rock->skill[10] = FOOD_MEAT;    // type
+	//							break;
+	//						default:
+	//							break;
+	//					}
+	//					rock->skill[11] = WORN;        // status
+	//					rock->skill[12] = 0;           // beatitude
+	//					rock->skill[13] = 1;           // count
+	//					rock->skill[14] = rand();      // appearance
+	//					rock->skill[15] = 1;		   // identified
+	//				}
+	//				else
+	//				{
+	//					Entity* entity = newEntity(items[POTION_BOOZE].index + (rand() % items[POTION_BOOZE].variations), 1, map.entities, nullptr); //Particle entity.
+	//					switch ( rand() % 6 )
+	//					{
+	//						case 4:
+	//							entity->sprite = items[FOOD_CHEESE].index;    // type
+	//							break;
+	//						case 5:
+	//							entity->sprite = items[FOOD_MEAT].index;    // type
+	//							break;
+	//						default:
+	//							break;
+	//					}
+	//					entity->sizex = 1;
+	//					entity->sizey = 1;
+	//					entity->x = x * 16 + (-4 + rand() % 9);
+	//					entity->y = y * 16 + (-4 + rand() % 9);
+	//					entity->z = -20 + rand() % 12;
+	//					entity->yaw = (rand() % 360) * PI / 180.0;
+	//					entity->roll = (rand() % 360) * PI / 180.0;
+
+	//					entity->vel_x = 0.2 * cos(entity->yaw);
+	//					entity->vel_y = 0.2 * sin(entity->yaw);
+	//					entity->vel_z = 16;// 0.25 - (rand() % 5) / 10.0;
+
+	//					entity->skill[0] = 1500; // particle life
+	//					entity->skill[1] = 0; // particle direction, 0 = upwards, 1 = downwards.
+
+	//					entity->behavior = &actParticleRock;
+	//					entity->flags[PASSABLE] = true;
+	//					entity->flags[NOUPDATE] = true;
+	//					entity->flags[UNCLICKABLE] = true;
+	//					if ( multiplayer != CLIENT )
+	//					{
+	//						entity_uids--;
+	//					}
+	//					entity->setUID(-3);
+	//				}
+	//			}
+	//		}
+	//	}
+	//}
+	//if ( keystatus[SDL_SCANCODE_F4] )
+	//{
+	//	keystatus[SDL_SCANCODE_F4] = 0;
+	//	everybodyfriendly = true;
+	//	buddhamode = true;
+	//	std::vector<std::pair<int, int>> goodspots;
+	//	if ( !strncmp(map.name, "Mages Guild", 11) )
+	//	{
+	//		for ( int y = 1; y < map.height / 2; ++y )
+	//		{
+	//			for ( int x = 1; x < map.width / 4; ++x )
+	//			{
+	//				if ( map.tiles[OBSTACLELAYER + y * MAPLAYERS + x * map.height * MAPLAYERS] == 0
+	//					&& map.tiles[y * MAPLAYERS + x * map.height * MAPLAYERS] != 0 )
+	//				{
+	//					goodspots.push_back(std::make_pair(x * 16 + 8, y * 16 + 8));
+	//				}
+	//			}
+	//		}
+	//	}
+	//	else
+	//	{
+	//		for ( int y = 1; y < map.height; ++y )
+	//		{
+	//			for ( int x = 1; x < map.width; ++x )
+	//			{
+	//				if ( map.tiles[OBSTACLELAYER + y * MAPLAYERS + x * map.height * MAPLAYERS] == 0
+	//					&& map.tiles[y * MAPLAYERS + x * map.height * MAPLAYERS] != 0 )
+	//				{
+	//					goodspots.push_back(std::make_pair(x * 16 + 8, y * 16 + 8));
+	//				}
+	//			}
+	//		}
+	//	}
+	//	for ( int i = 40; i > 0 && goodspots.size() > 0; --i )
+	//	{
+	//		Monster type = static_cast<Monster>(rand() % NUMMONSTERS);
+	//		while ( type == DEVIL || type == LICH || type == LICH_FIRE || type == LICH_ICE || type == COCKATRICE || type == SPIDER || type == CRYSTALGOLEM
+	//			|| type == SCARAB || type == SPELLBOT || type == SENTRYBOT
+	//			|| type == MIMIC || type == BUGBEAR || type == OCTOPUS || type == MINOTAUR || type == GHOUL || type == DEMON || type == CREATURE_IMP
+	//			|| type == NOTHING )
+	//		{
+	//			type = static_cast<Monster>(rand() % NUMMONSTERS);
+	//		}
+	//		int element = rand() % goodspots.size();
+	//		auto iter = goodspots.begin();
+	//		std::advance(iter, element);
+	//		Entity* monster = summonMonster(type, iter->first, iter->second, false);
+	//		if ( monster )
+	//		{
+	//			//messagePlayer(PLAYER_NUM, "%d, %d", static_cast<int>(monster->x) >> 4, static_cast<int>(monster->y) >> 4);
+	//			Stat* monsterStats = monster->getStats();
+	//			std::string name = "Party ";
+	//			name += monstertypename[monsterStats->type];
+	//			strcpy(monsterStats->name, name.c_str());
+	//			monsterStats->monsterForceAllegiance = Stat::MONSTER_FORCE_PLAYER_ALLY;
+	//			std::vector<int> helms;
+	//			helms.push_back(HAT_HOOD);
+	//			helms.push_back(HAT_JESTER);
+	//			helms.push_back(HAT_PHRYGIAN);
+	//			helms.push_back(HAT_WIZARD);
+	//			helms.push_back(HAT_FEZ);
+	//			helms.push_back(HAT_HOOD_RED);
+	//			helms.push_back(MASK_SHAMAN);
+	//			helms.push_back(PUNISHER_HOOD);
+	//			if ( !monsterStats->helmet )
+	//			{
+	//				monsterStats->helmet = newItem(static_cast<ItemType>(helms[rand() % helms.size()]), EXCELLENT, 0, 1, rand(), true, nullptr);
+	//			}
+	//			else
+	//			{
+	//				monsterStats->helmet->type = static_cast<ItemType>(helms[rand() % helms.size()]);
+	//			}
+	//			monsterStats->EDITOR_ITEMS[ITEM_SLOT_HELM] == 0;
+
+	//			Entity* rock = newEntity(-1, 1, map.entities, nullptr); //Rock entity.
+	//			rock->x = monster->x;
+	//			rock->y = monster->y;
+	//			rock->sprite = 990;
+	//			rock->sizex = 7;
+	//			rock->sizey = 7;
+	//			rock->behavior = &actBoulder;
+	//			rock->skill[0] = 1; // BOULDER_STOPPED
+	//		}
+	//		goodspots.erase(iter);
+	//	}
+	//}
+	//if ( keystatus[SDL_SCANCODE_F5] )
+	//{
+	//	keystatus[SDL_SCANCODE_F5] = 0;
+	//	partymode = !partymode;
+	//}
+	//if ( keystatus[SDL_SCANCODE_F7] )
+	//{
+	//	keystatus[SDL_SCANCODE_F7] = 0;
+	//	//playmusic(endgamemusic, true, false, false);
+	//	for ( node_t* node = map.entities->first; node; )
+	//	{
+	//		Entity* entity = (Entity*)node->element;
+	//		node = node->next;
+	//		if ( entity && entity->behavior == &actBoulder )
+	//		{
+	//			Entity* ohitentity = hit.entity;
+	//			hit.entity = entity;
+	//			magicDig(nullptr, nullptr, -4, 0);
+	//			hit.entity = ohitentity;
+	//		}
+	//	}
+	//	for ( node_t* node = map.entities->first; node; node = node->next )
+	//	{
+	//		Entity* entity = (Entity*)node->element;
+	//		if ( entity && entity->behavior == &actMonster )
+	//		{
+	//			if ( entity->monsterSetPathToLocation(my->x / 16, my->y / 16, 2, true) )
+	//			{
+	//				entity->monsterState = MONSTER_STATE_HUNT;
+	//				serverUpdateEntitySkill(entity, 0);
+	//			}
+	//		}
+	//	}
+	//}
+	//if ( keystatus[SDL_SCANCODE_F8] )
+	//{
+	//	keystatus[SDL_SCANCODE_F8] = 0;
+	//	playmusic(librarymusic, true, false, false);
+	//	FMOD_ChannelGroup_SetVolume(music_group, (musvolume + 20) / 128.f);
+	//}
+	//if ( keystatus[SDL_SCANCODE_F9] )
+	//{
+	//	keystatus[SDL_SCANCODE_F9] = 0;
+	//	everybodyfriendly = true;
+	//	buddhamode = true;
+	//	real_t x = my->x - 32.0 * cos(my->yaw);
+	//	real_t y = my->y - 32.0 * sin(my->yaw);
+	//	Entity* monster = summonMonster(HUMAN, x, y, true);
+	//	if ( monster )
+	//	{
+	//		monster->getStats()->MISC_FLAGS[STAT_FLAG_NPC] = 16;
+	//		monster->getStats()->EDITOR_ITEMS[ITEM_SLOT_HELM] = 0;
+	//		Entity* portal = newEntity(254, 1, map.entities, nullptr); //Rock entity.
+	//		portal->x = my->x - 16.0 * cos(my->yaw);
+	//		portal->y = my->y - 16.0 * sin(my->yaw);
+	//		spawnExplosion(portal->x, portal->y, -4);
+	//		portal->sizex = 4;
+	//		portal->sizey = 4;
+	//		portal->yaw = PI / 2;
+	//		portal->behavior = &actPortal;
+	//		portal->skill[3] = 1; // not secret portal, just aesthetic.
+	//		portal->flags[PASSABLE] = true;
+	//		portal->flags[BRIGHT] = true;
+	//		skipLevelsOnLoad = 25 - currentlevel;
+	//	}
+	//}
+	//if ( partymode && ticks % 2 == 0 )
+	//{
+	//	std::vector<std::pair<int, int>> goodspots;
+	//	for ( int y = 1; y < map.height; ++y )
+	//	{
+	//		for ( int x = 1; x < map.width; ++x )
+	//		{
+	//			if ( map.tiles[OBSTACLELAYER + y * MAPLAYERS + x * map.height * MAPLAYERS] == 0 )
+	//			{
+	//				goodspots.push_back(std::make_pair(x * 16 + 8, y * 16 + 8));
+	//			}
+	//		}
+	//	}
+	//	for ( int i = 3; i > 0; --i )
+	//	{
+	//		int element = rand() % goodspots.size();
+	//		auto iter = goodspots.begin();
+	//		std::advance(iter, element);
+
+	//		switch ( rand() % 5 )
+	//		{
+	//			case 0:
+	//			case 1:
+	//			case 2:
+	//				spawnExplosionFromSprite(145, iter->first, iter->second, -40 - (rand() % 20));
+	//				break;
+	//			case 3:
+	//				spawnExplosionFromSprite(135, iter->first, iter->second, -40 - (rand() % 20));
+	//				break;
+	//			case 4:
+	//				spawnExplosionFromSprite(49, iter->first, iter->second, -40 - (rand() % 20));
+	//				break;
+	//			default:
+	//				break;
+	//		}
+
+	//		goodspots.erase(iter);
+	//	}
+	//}
 	//if ( keystatus[SDL_SCANCODE_F1] )
 	//{
 	//	//gameloopFreezeEntities = !gameloopFreezeEntities;
@@ -1931,22 +2467,22 @@ void actPlayer(Entity* my)
 	//}
 	/*if ( my->ticks % 50 == 0 )
 	{
-		messagePlayer(clientnum, "%d", stats[clientnum]->HUNGER);
+		messagePlayer(PLAYER_NUM, "%d", stats[PLAYER_NUM]->HUNGER);
 	}*/
 	/*
 	if ( keystatus[SDL_SCANCODE_F2] )
 	{
-		if ( players[clientnum] != nullptr && players[clientnum]->entity != nullptr )
+		if ( players[PLAYER_NUM] != nullptr && players[PLAYER_NUM]->entity != nullptr )
 		{
-			lightSphereShadow(players[clientnum]->entity->x / 16, players[clientnum]->entity->y / 16, 8, 150);
+			lightSphereShadow(players[PLAYER_NUM]->entity->x / 16, players[PLAYER_NUM]->entity->y / 16, 8, 150);
 		}
 		keystatus[SDL_SCANCODE_F2] = 0;
 	}
 	if ( keystatus[SDL_SCANCODE_F3] )
 	{
-		if ( players[clientnum] != nullptr && players[clientnum]->entity != nullptr )
+		if ( players[PLAYER_NUM] != nullptr && players[PLAYER_NUM]->entity != nullptr )
 		{
-			players[clientnum]->entity->skill[3] = (players[clientnum]->entity->skill[3] == 0);
+			players[PLAYER_NUM]->entity->skill[3] = (players[PLAYER_NUM]->entity->skill[3] == 0);
 		}
 		keystatus[SDL_SCANCODE_F3] = 0;
 	}
@@ -2031,24 +2567,24 @@ void actPlayer(Entity* my)
 		SteamUserStats()->StoreStats();
 	}*/
 
-	// SPLITSCREEN TODO
-	if (PLAYER_NUM == clientnum && appraisal_timer > 0)
+	if ( players[PLAYER_NUM]->isLocalPlayer() 
+		&& players[PLAYER_NUM]->inventoryUI.appraisal.timer > 0 )
 	{
-		Item* tempItem = uidToItem(appraisal_item);
+		Item* tempItem = uidToItem(players[PLAYER_NUM]->inventoryUI.appraisal.current_item);
 		if ( tempItem )
 		{
 			if ( tempItem->identified )
 			{
-				appraisal_timer = 0;
-				appraisal_item = 0;
+				players[PLAYER_NUM]->inventoryUI.appraisal.timer = 0;
+				players[PLAYER_NUM]->inventoryUI.appraisal.current_item = 0;
 			}
 			else if ( tempItem->type == GEM_ROCK )
 			{
 				//Auto-succeed on rocks.
 				tempItem->identified = true;
-				messagePlayer(clientnum, language[570], tempItem->description());
-				appraisal_item = 0;
-				appraisal_timer = 0;
+				messagePlayer(PLAYER_NUM, language[570], tempItem->description());
+				players[PLAYER_NUM]->inventoryUI.appraisal.current_item = 0;
+				players[PLAYER_NUM]->inventoryUI.appraisal.timer = 0;
 
 				// update inventory by trying to stack the newly identified item.
 				std::unordered_set<Uint32> appearancesOfSimilarItems;
@@ -2068,8 +2604,14 @@ void actPlayer(Entity* my)
 						// if items are the same, check to see if they should stack
 						if ( item2->shouldItemStack(PLAYER_NUM) )
 						{
+							if ( itemIsEquipped(tempItem, PLAYER_NUM) )
+							{
+								// dont try to move our equipped item - it's an edge case to crash
+								continue;
+							}
+
 							item2->count += tempItem->count;
-							if ( multiplayer == CLIENT && itemIsEquipped(item2, clientnum) )
+							if ( multiplayer == CLIENT && itemIsEquipped(item2, PLAYER_NUM) )
 							{
 								// if incrementing qty and holding item, then send "equip" for server to update their count of your held item.
 								clientSendEquipUpdateToServer(EQUIP_ITEM_SLOT_WEAPON, EQUIP_ITEM_SUCCESS_UPDATE_QTY, PLAYER_NUM,
@@ -2111,10 +2653,10 @@ void actPlayer(Entity* my)
 			}
 			else
 			{
-				appraisal_timer -= 1; //De-increment appraisal timer.
-				if (appraisal_timer <= 0)
+				players[PLAYER_NUM]->inventoryUI.appraisal.timer -= 1; //De-increment appraisal timer.
+				if ( players[PLAYER_NUM]->inventoryUI.appraisal.timer <= 0)
 				{
-					appraisal_timer = 0;
+					players[PLAYER_NUM]->inventoryUI.appraisal.timer = 0;
 
 					//Cool. Time to identify the item.
 					bool success = false;
@@ -2136,7 +2678,7 @@ void actPlayer(Entity* my)
 					if ( success )
 					{
 						tempItem->identified = true;
-						messagePlayer(clientnum, language[570], tempItem->description());
+						messagePlayer(PLAYER_NUM, language[570], tempItem->description());
 						if ( tempItem->type == GEM_GLASS )
 						{
 							steamStatisticUpdate(STEAM_STAT_RHINESTONE_COWBOY, STEAM_STAT_INT, 1);
@@ -2146,7 +2688,7 @@ void actPlayer(Entity* my)
 					{
 						if ( itemCategory(tempItem) == GEM )
 						{
-							messagePlayer(clientnum, language[3240], tempItem->description());
+							messagePlayer(PLAYER_NUM, language[3240], tempItem->description());
 						}
 					}
 
@@ -2214,6 +2756,11 @@ void actPlayer(Entity* my)
 										// identified item is at max count so don't stack, abort.
 										break;
 									}
+									if ( itemIsEquipped(tempItem, PLAYER_NUM) )
+									{
+										// dont try to move our equipped item - it's an edge case to crash
+										break;
+									}
 									if ( item2->count >= (maxStack - 1) )
 									{
 										// if we're at max count then skip this check.
@@ -2229,7 +2776,7 @@ void actPlayer(Entity* my)
 									int total = tempItem->count + item2->count;
 									item2->count = maxStack - 1;
 									tempItem->count = total - item2->count;
-									if ( multiplayer == CLIENT && itemIsEquipped(item2, clientnum) )
+									if ( multiplayer == CLIENT && itemIsEquipped(item2, PLAYER_NUM) )
 									{
 										// if incrementing qty and holding item, then send "equip" for server to update their count of your held item.
 										strcpy((char*)net_packet->data, "EQUS");
@@ -2239,7 +2786,7 @@ void actPlayer(Entity* my)
 										SDLNet_Write32((Uint32)item2->count, &net_packet->data[16]);
 										SDLNet_Write32((Uint32)item2->appearance, &net_packet->data[20]);
 										net_packet->data[24] = item2->identified;
-										net_packet->data[25] = clientnum;
+										net_packet->data[25] = PLAYER_NUM;
 										net_packet->address.host = net_server.host;
 										net_packet->address.port = net_server.port;
 										net_packet->len = 27;
@@ -2274,19 +2821,24 @@ void actPlayer(Entity* my)
 								// if items are the same, check to see if they should stack
 								else if ( item2->shouldItemStack(PLAYER_NUM) )
 								{
+									if ( itemIsEquipped(tempItem, PLAYER_NUM) )
+									{
+										// dont try to move our equipped item - it's an edge case to crash
+										continue;
+									}
 									item2->count += tempItem->count;
-									if ( multiplayer == CLIENT && itemIsEquipped(item2, clientnum) )
+									if ( multiplayer == CLIENT && itemIsEquipped(item2, PLAYER_NUM) )
 									{
 										// if incrementing qty and holding item, then send "equip" for server to update their count of your held item.
 										Item** slot = itemSlot(stats[PLAYER_NUM], item2);
 										if ( slot )
 										{
-											if ( slot == &stats[clientnum]->weapon )
+											if ( slot == &stats[PLAYER_NUM]->weapon )
 											{
 												clientSendEquipUpdateToServer(EQUIP_ITEM_SLOT_WEAPON, EQUIP_ITEM_SUCCESS_UPDATE_QTY, PLAYER_NUM,
 													item2->type, item2->status, item2->beatitude, item2->count, item2->appearance, item2->identified);
 											}
-											else if ( slot == &stats[clientnum]->shield )
+											else if ( slot == &stats[PLAYER_NUM]->shield )
 											{
 												clientSendEquipUpdateToServer(EQUIP_ITEM_SLOT_SHIELD, EQUIP_ITEM_SUCCESS_UPDATE_QTY, PLAYER_NUM,
 													item2->type, item2->status, item2->beatitude, item2->count, item2->appearance, item2->identified);
@@ -2348,14 +2900,14 @@ void actPlayer(Entity* my)
 						}
 					}
 
-					appraisal_item = 0;
+					players[PLAYER_NUM]->inventoryUI.appraisal.current_item = 0;
 				}
 			}
 		}
 		else
 		{
-			appraisal_timer = 0;
-			appraisal_item = 0;
+			players[PLAYER_NUM]->inventoryUI.appraisal.timer = 0;
+			players[PLAYER_NUM]->inventoryUI.appraisal.current_item = 0;
 		}
 	}
 
@@ -2419,7 +2971,7 @@ void actPlayer(Entity* my)
 	// invisibility
 	if ( !intro )
 	{
-		if ( PLAYER_NUM == clientnum || multiplayer == SERVER || splitscreen )
+		if ( players[PLAYER_NUM]->isLocalPlayer() || multiplayer == SERVER )
 		{
 			if ( stats[PLAYER_NUM]->ring != NULL )
 				if ( stats[PLAYER_NUM]->ring->type == RING_INVISIBILITY )
@@ -2516,10 +3068,11 @@ void actPlayer(Entity* my)
 	}
 
 	real_t zOffset = 0;
-	bool oldInsectoidLevitate = insectoidLevitating[PLAYER_NUM];
-	insectoidLevitating[PLAYER_NUM] = false;
+	bool oldInsectoidLevitate = players[PLAYER_NUM]->movement.insectoidLevitating;
+	bool& insectoidLevitating = players[PLAYER_NUM]->movement.insectoidLevitating;
+	insectoidLevitating = false;
 
-	if ( PLAYER_NUM == clientnum || multiplayer == SERVER || splitscreen )
+	if ( players[PLAYER_NUM]->isLocalPlayer() || multiplayer == SERVER )
 	{
 		switch ( stats[PLAYER_NUM]->type )
 		{
@@ -2604,7 +3157,7 @@ void actPlayer(Entity* my)
 		if ( levitating )
 		{
 			my->z -= 1; // floating
-			insectoidLevitating[PLAYER_NUM] = (playerRace == INSECTOID && stats[PLAYER_NUM]->EFFECTS[EFF_FLUTTER]);
+			insectoidLevitating = (playerRace == INSECTOID && stats[PLAYER_NUM]->EFFECTS[EFF_FLUTTER]);
 		}
 
 		if ( !levitating && prevlevitating )
@@ -2682,12 +3235,12 @@ void actPlayer(Entity* my)
 						}
 						clipMove(&my->x, &my->y, velx, vely, my);
 						messagePlayer(PLAYER_NUM, language[3869]);
-						if ( PLAYER_NUM == clientnum || splitscreen )
+						if ( players[PLAYER_NUM]->isLocalPlayer() )
 						{
 							cameravars[PLAYER_NUM].shakex += .1;
 							cameravars[PLAYER_NUM].shakey += 10;
 						}
-						else if ( PLAYER_NUM != clientnum && multiplayer == SERVER )
+						else if ( !players[PLAYER_NUM]->isLocalPlayer() && multiplayer == SERVER )
 						{
 							if ( PLAYER_NUM > 0 )
 							{
@@ -2728,19 +3281,21 @@ void actPlayer(Entity* my)
 	{
 		if ( playerRace == INSECTOID && stats[PLAYER_NUM]->EFFECTS[EFF_FLUTTER] && (my->z >= -2.05 && my->z <= -1.95) )
 		{
-			insectoidLevitating[PLAYER_NUM] = true;
+			insectoidLevitating = true;
 		}
 	}
 
 	// swimming
 	bool waterwalkingboots = false;
 	if ( stats[PLAYER_NUM]->shoes != NULL )
+	{
 		if ( stats[PLAYER_NUM]->shoes->type == IRON_BOOTS_WATERWALKING )
 		{
 			waterwalkingboots = true;
 		}
-	bool swimming = isPlayerSwimming(my);
-	if ( PLAYER_NUM == clientnum || multiplayer == SERVER || splitscreen )
+	}
+	bool swimming = players[PLAYER_NUM]->movement.isPlayerSwimming();
+	if ( players[PLAYER_NUM]->isLocalPlayer() || multiplayer == SERVER )
 	{
 		if ( swimming )
 		{
@@ -2755,7 +3310,7 @@ void actPlayer(Entity* my)
 			{
 				my->z += 1;
 			}
-			if ( !PLAYER_INWATER && (PLAYER_NUM == clientnum || splitscreen) )
+			if ( !PLAYER_INWATER && (players[PLAYER_NUM]->isLocalPlayer()) )
 			{
 				PLAYER_INWATER = 1;
 				if ( lavatiles[map.tiles[y * MAPLAYERS + x * MAPLAYERS * map.height]] )
@@ -2890,85 +3445,118 @@ void actPlayer(Entity* my)
 		}
 	}
 
-	if (PLAYER_NUM == clientnum || splitscreen)
+	if ( players[PLAYER_NUM]->isLocalPlayer() )
 	{
 		players[PLAYER_NUM]->entity = my;
 
 		if ( !usecamerasmoothing )
 		{
-			handlePlayerCameraBobbing(my, PLAYER_NUM, false);
+			players[PLAYER_NUM]->movement.handlePlayerCameraBobbing(false);
 		}
+
+		Sint32 mouseX = inputs.getMouse(PLAYER_NUM, Inputs::OX);
+		Sint32 mouseY = inputs.getMouse(PLAYER_NUM, Inputs::OY);
+
+		bool shootmode = players[PLAYER_NUM]->shootmode;
+		FollowerRadialMenu& followerMenu = FollowerMenu[PLAYER_NUM];
 
 		// object interaction
 		if ( intro == false )
 		{
 			clickDescription(PLAYER_NUM, NULL); // inspecting objects
 
-			if ( FollowerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT )
+			if ( followerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT )
 			{
 				Entity* underMouse = nullptr;
-				if ( FollowerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT && ticks % 10 == 0 )
+				if ( followerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT && ticks % 10 == 0 )
 				{
-					if ( !shootmode )
+					if ( !players[PLAYER_NUM]->worldUI.isEnabled() )
 					{
-						Uint32 uidnum = GO_GetPixelU32(omousex, yres - omousey, cameras[PLAYER_NUM]);
-						if ( uidnum > 0 )
+						if ( !shootmode )
 						{
-							underMouse = uidToEntity(uidnum);
-						}
-					}
-					else
-					{
-						Uint32 uidnum = GO_GetPixelU32(xres / 2, yres / 2, cameras[PLAYER_NUM]);
-						if ( uidnum > 0 )
-						{
-							underMouse = uidToEntity(uidnum);
-						}
-					}
-
-					if ( underMouse && FollowerMenu.followerToCommand )
-					{
-						Entity* parent = uidToEntity(underMouse->skill[2]);
-						if ( underMouse->behavior == &actMonster || (parent && parent->behavior == &actMonster) )
-						{
-							// see if we selected a limb
-							if ( parent )
+							Uint32 uidnum = GO_GetPixelU32(mouseX, yres - mouseY, cameras[PLAYER_NUM]);
+							if ( uidnum > 0 )
 							{
-								underMouse = parent;
+								underMouse = uidToEntity(uidnum);
 							}
 						}
-						FollowerMenu.allowedInteractEntity(*underMouse);
+						else
+						{
+							Uint32 uidnum = GO_GetPixelU32(cameras[PLAYER_NUM].winw / 2, yres - cameras[PLAYER_NUM].winh / 2, cameras[PLAYER_NUM]);
+							if ( uidnum > 0 )
+							{
+								underMouse = uidToEntity(uidnum);
+							}
+						}
+						if ( underMouse && followerMenu.followerToCommand )
+						{
+							Entity* parent = uidToEntity(underMouse->skill[2]);
+							if ( underMouse->behavior == &actMonster || (parent && parent->behavior == &actMonster) )
+							{
+								// see if we selected a limb
+								if ( parent )
+								{
+									underMouse = parent;
+								}
+							}
+							followerMenu.allowedInteractEntity(*underMouse);
+						}
+						else
+						{
+							strcpy(followerMenu.interactText, "");
+						}
 					}
 					else
 					{
-						strcpy(FollowerMenu.interactText, "");
+						if ( !players[PLAYER_NUM]->worldUI.bTooltipInView )
+						{
+							strcpy(followerMenu.interactText, "");
+						}
 					}
 				}
 			}
 
-			if ( FollowerMenu.followerToCommand == nullptr && FollowerMenu.selectMoveTo == false )
+			if ( followerMenu.followerToCommand == nullptr && followerMenu.selectMoveTo == false )
 			{
 				bool clickedOnGUI = false;
-				selectedEntity = entityClicked(&clickedOnGUI, false, PLAYER_NUM); // using objects
-				if ( !selectedEntity && !clickedOnGUI )
+
+				EntityClickType clickType = ENTITY_CLICK_USE;
+				if ( players[PLAYER_NUM]->worldUI.isEnabled() )
 				{
-					// otherwise if we hold right click we'll keep trying this function, FPS will drop.
-					++selectedEntityGimpTimer; 
+					clickType = ENTITY_CLICK_USE_TOOLTIPS_ONLY;
+					Entity* activeTooltipEntity = uidToEntity(players[PLAYER_NUM]->worldUI.uidForActiveTooltip);
+					if ( activeTooltipEntity && activeTooltipEntity->bEntityTooltipRequiresButtonHeld() )
+					{
+						clickType = ENTITY_CLICK_HELD_USE_TOOLTIPS_ONLY;
+					}
+				}
+
+				selectedEntity[PLAYER_NUM] = entityClicked(&clickedOnGUI, false, PLAYER_NUM, clickType); // using objects
+				if ( !selectedEntity[PLAYER_NUM] && !clickedOnGUI )
+				{
+					if ( clickType == ENTITY_CLICK_USE )
+					{
+						// otherwise if we hold right click we'll keep trying this function, FPS will drop.
+						if ( (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_USE])) || (inputs.bControllerInputPressed(PLAYER_NUM, INJOY_GAME_USE)) )
+						{
+							++players[PLAYER_NUM]->movement.selectedEntityGimpTimer;
+						}
+					}
 				}
 			}
 			else
 			{
-				selectedEntity = NULL;
+				selectedEntity[PLAYER_NUM] = NULL;
 
-				if ( !command && (*inputPressed(impulses[IN_USE]) || *inputPressed(joyimpulses[INJOY_GAME_USE])) )
+				if ( !command && (*inputPressedForPlayer(PLAYER_NUM, impulses[IN_USE]) || inputs.bControllerInputPressed(PLAYER_NUM, INJOY_GAME_USE)) )
 				{
-					if ( !FollowerMenu.menuToggleClick && FollowerMenu.selectMoveTo )
+					if ( !followerMenu.menuToggleClick && followerMenu.selectMoveTo )
 					{
-						if ( FollowerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT )
+						if ( followerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT )
 						{
 							// we're selecting a point for the ally to move to.
-							*inputPressed(impulses[IN_USE]) = 0;
-							*inputPressed(joyimpulses[INJOY_GAME_USE]) = 0;
+							*inputPressedForPlayer(PLAYER_NUM, impulses[IN_USE]) = 0;
+							inputs.controllerClearInput(PLAYER_NUM, INJOY_GAME_USE);
 
 							int minimapTotalScale = minimapScaleQuickToggle + minimapScale;
 							if ( map.height > 64 || map.width > 64 )
@@ -2983,15 +3571,16 @@ void actPlayer(Entity* my)
 								}
 								minimapTotalScale = std::max(1, minimapScale - numMinimapSizesToReduce) + minimapScaleQuickToggle;
 							}
-							if ( !shootmode && mouseInBounds(xres - map.width * minimapTotalScale, xres, yres - map.height * minimapTotalScale, yres) ) // mouse within minimap pixels (each map tile is 4 pixels)
+							if ( !shootmode && mouseInBounds(PLAYER_NUM, minimaps[PLAYER_NUM].x, minimaps[PLAYER_NUM].x + minimaps[PLAYER_NUM].w,
+								yres - minimaps[PLAYER_NUM].y - minimaps[PLAYER_NUM].h, yres - minimaps[PLAYER_NUM].y) ) // mouse within minimap pixels (each map tile is 4 pixels)
 							{
-								MinimapPing newPing(ticks, -1, (omousex - (xres - map.width * minimapTotalScale)) / minimapTotalScale, (omousey - (yres - map.height * minimapTotalScale)) / minimapTotalScale);
-								minimapPingAdd(newPing);
+								MinimapPing newPing(ticks, -1, (mouseX - (minimaps[PLAYER_NUM].x)) / minimapTotalScale, (mouseY - (yres - minimaps[PLAYER_NUM].y - minimaps[PLAYER_NUM].h)) / minimapTotalScale);
+								minimapPingAdd(PLAYER_NUM, PLAYER_NUM, newPing);
 								createParticleFollowerCommand(newPing.x, newPing.y, 0, 174);
-								FollowerMenu.optionSelected = ALLY_CMD_MOVETO_CONFIRM;
-								FollowerMenu.selectMoveTo = false;
-								FollowerMenu.moveToX = static_cast<int>(newPing.x);
-								FollowerMenu.moveToY = static_cast<int>(newPing.y);
+								followerMenu.optionSelected = ALLY_CMD_MOVETO_CONFIRM;
+								followerMenu.selectMoveTo = false;
+								followerMenu.moveToX = static_cast<int>(newPing.x);
+								followerMenu.moveToY = static_cast<int>(newPing.y);
 							}
 							else if ( players[PLAYER_NUM] && players[PLAYER_NUM]->entity )
 							{
@@ -3025,19 +3614,19 @@ void actPlayer(Entity* my)
 								}
 
 								createParticleFollowerCommand(previousx, previousy, 0, 174);
-								FollowerMenu.optionSelected = ALLY_CMD_MOVETO_CONFIRM;
-								FollowerMenu.selectMoveTo = false;
-								FollowerMenu.moveToX = static_cast<int>(previousx) / 16;
-								FollowerMenu.moveToY = static_cast<int>(previousy) / 16;
+								followerMenu.optionSelected = ALLY_CMD_MOVETO_CONFIRM;
+								followerMenu.selectMoveTo = false;
+								followerMenu.moveToX = static_cast<int>(previousx) / 16;
+								followerMenu.moveToY = static_cast<int>(previousy) / 16;
 								//messagePlayer(PLAYER_NUM, "%d, %d, pitch: %f", followerMoveToX, followerMoveToY, players[PLAYER_NUM]->entity->pitch);
 							}
 						}
-						else if ( FollowerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT )
+						else if ( followerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT )
 						{
 							// we're selecting a target for the ally.
-							Entity* target = entityClicked(nullptr, false, PLAYER_NUM);
-							*inputPressed(impulses[IN_USE]) = 0;
-							*inputPressed(joyimpulses[INJOY_GAME_USE]) = 0;
+							Entity* target = entityClicked(nullptr, false, PLAYER_NUM, EntityClickType::ENTITY_CLICK_FOLLOWER_INTERACT);
+							*inputPressedForPlayer(PLAYER_NUM, impulses[IN_USE]) = 0;
+							inputs.controllerClearInput(PLAYER_NUM, INJOY_GAME_USE);
 							if ( target )
 							{
 								Entity* parent = uidToEntity(target->skill[2]);
@@ -3049,7 +3638,7 @@ void actPlayer(Entity* my)
 										target = parent;
 									}
 								}
-								else if ( target->sprite == 184 ) // switch base.
+								else if ( target->sprite == 184 || target->sprite == 585 ) // switch base.
 								{
 									parent = uidToEntity(target->parent);
 									if ( parent )
@@ -3057,124 +3646,138 @@ void actPlayer(Entity* my)
 										target = parent;
 									}
 								}
-								if ( FollowerMenu.allowedInteractEntity(*target) )
+								if ( followerMenu.allowedInteractEntity(*target) )
 								{
 									createParticleFollowerCommand(target->x, target->y, 0, 174);
-									FollowerMenu.optionSelected = ALLY_CMD_ATTACK_CONFIRM;
-									FollowerMenu.followerToCommand->monsterAllyInteractTarget = target->getUID();
+									followerMenu.optionSelected = ALLY_CMD_ATTACK_CONFIRM;
+									followerMenu.followerToCommand->monsterAllyInteractTarget = target->getUID();
 								}
 								else
 								{
-									messagePlayer(clientnum, language[3094]);
-									FollowerMenu.optionSelected = ALLY_CMD_CANCEL;
-									FollowerMenu.optionPrevious = ALLY_CMD_ATTACK_CONFIRM;
-									FollowerMenu.followerToCommand->monsterAllyInteractTarget = 0;
+									messagePlayer(PLAYER_NUM, language[3094]);
+									followerMenu.optionSelected = ALLY_CMD_CANCEL;
+									followerMenu.optionPrevious = ALLY_CMD_ATTACK_CONFIRM;
+									followerMenu.followerToCommand->monsterAllyInteractTarget = 0;
 								}
 							}
 							else
 							{
-								FollowerMenu.optionSelected = ALLY_CMD_CANCEL;
-								FollowerMenu.optionPrevious = ALLY_CMD_ATTACK_CONFIRM;
-								FollowerMenu.followerToCommand->monsterAllyInteractTarget = 0;
+								followerMenu.optionSelected = ALLY_CMD_CANCEL;
+								followerMenu.optionPrevious = ALLY_CMD_ATTACK_CONFIRM;
+								followerMenu.followerToCommand->monsterAllyInteractTarget = 0;
 							}
-							FollowerMenu.selectMoveTo = false;
-							strcpy(FollowerMenu.interactText, "");
+
+							if ( players[PLAYER_NUM]->worldUI.isEnabled() )
+							{
+								players[PLAYER_NUM]->worldUI.reset();
+							}
+
+							followerMenu.selectMoveTo = false;
+							strcpy(followerMenu.interactText, "");
 						}
 					}
 				}
 			}
 
-			if ( !command && !FollowerMenu.followerToCommand && FollowerMenu.recentEntity )
+			if ( !command && !followerMenu.followerToCommand && followerMenu.recentEntity )
 			{
-				if ( *inputPressed(impulses[IN_FOLLOWERMENU]) || *inputPressed(joyimpulses[INJOY_GAME_FOLLOWERMENU]) )
+				if ( *inputPressedForPlayer(PLAYER_NUM, impulses[IN_FOLLOWERMENU]) 
+					|| (inputs.bControllerInputPressed(PLAYER_NUM, INJOY_GAME_FOLLOWERMENU) 
+						&& players[PLAYER_NUM]->shootmode /*&& !players[PLAYER_NUM]->worldUI.bTooltipInView*/) )
 				{
 					if ( players[PLAYER_NUM] && players[PLAYER_NUM]->entity
-						&& FollowerMenu.recentEntity->monsterTarget == players[PLAYER_NUM]->entity->getUID() )
+						&& followerMenu.recentEntity->monsterTarget == players[PLAYER_NUM]->entity->getUID() )
 					{
 						// your ally is angry at you!
 					}
 					else
 					{
-						selectedEntity = FollowerMenu.recentEntity;
-						FollowerMenu.holdWheel = true;
+						selectedEntity[PLAYER_NUM] = followerMenu.recentEntity;
+						followerMenu.holdWheel = true;
+						if ( inputs.bControllerInputPressed(PLAYER_NUM, INJOY_GAME_FOLLOWERMENU) )
+						{
+							followerMenu.holdWheel = false;
+						}
 					}
 				}
-				else if ( *inputPressed(impulses[IN_FOLLOWERMENU_LASTCMD]) || *inputPressed(joyimpulses[INJOY_GAME_FOLLOWERMENU_LASTCMD]) )
+				else if ( *inputPressedForPlayer(PLAYER_NUM, impulses[IN_FOLLOWERMENU_LASTCMD]) 
+					|| (inputs.bControllerInputPressed(PLAYER_NUM, INJOY_GAME_FOLLOWERMENU_LASTCMD) 
+						&& players[PLAYER_NUM]->shootmode /*&& !players[PLAYER_NUM]->worldUI.bTooltipInView*/) )
 				{
 					if ( players[PLAYER_NUM] && players[PLAYER_NUM]->entity
-						&& FollowerMenu.recentEntity->monsterTarget == players[PLAYER_NUM]->entity->getUID() )
+						&& followerMenu.recentEntity->monsterTarget == players[PLAYER_NUM]->entity->getUID() )
 					{
 						// your ally is angry at you!
-						*inputPressed(impulses[IN_FOLLOWERMENU_LASTCMD]) = 0;
-						*inputPressed(joyimpulses[INJOY_GAME_FOLLOWERMENU_LASTCMD]) = 0;
+						*inputPressedForPlayer(PLAYER_NUM, impulses[IN_FOLLOWERMENU_LASTCMD]) = 0;
+						inputs.controllerClearInput(PLAYER_NUM, INJOY_GAME_FOLLOWERMENU_LASTCMD);
 					}
-					else if ( FollowerMenu.optionPrevious != -1 )
+					else if ( followerMenu.optionPrevious != -1 )
 					{
-						FollowerMenu.followerToCommand = FollowerMenu.recentEntity;
+						followerMenu.followerToCommand = followerMenu.recentEntity;
 					}
 					else
 					{
-						*inputPressed(impulses[IN_FOLLOWERMENU_LASTCMD]) = 0;
-						*inputPressed(joyimpulses[INJOY_GAME_FOLLOWERMENU_LASTCMD]) = 0;
+						*inputPressedForPlayer(PLAYER_NUM, impulses[IN_FOLLOWERMENU_LASTCMD]) = 0;
+						inputs.controllerClearInput(PLAYER_NUM, INJOY_GAME_FOLLOWERMENU_LASTCMD);
 					}
 				}
 			}
-			if ( selectedEntity != NULL )
+			if ( selectedEntity[PLAYER_NUM] != NULL )
 			{
-				FollowerMenu.followerToCommand = nullptr;
-				Entity* parent = uidToEntity(selectedEntity->skill[2]);
-				if ( selectedEntity->behavior == &actMonster || (parent && parent->behavior == &actMonster) )
+				followerMenu.followerToCommand = nullptr;
+				Entity* parent = uidToEntity(selectedEntity[PLAYER_NUM]->skill[2]);
+				if ( selectedEntity[PLAYER_NUM]->behavior == &actMonster || (parent && parent->behavior == &actMonster) )
 				{
 					// see if we selected a follower to process right click menu.
 					if ( parent && parent->monsterAllyIndex == PLAYER_NUM )
 					{
-						FollowerMenu.followerToCommand = parent;
+						followerMenu.followerToCommand = parent;
 						//messagePlayer(0, "limb");
 					}
-					else if ( selectedEntity->monsterAllyIndex == PLAYER_NUM )
+					else if ( selectedEntity[PLAYER_NUM]->monsterAllyIndex == PLAYER_NUM )
 					{
-						FollowerMenu.followerToCommand = selectedEntity;
+						followerMenu.followerToCommand = selectedEntity[PLAYER_NUM];
 						//messagePlayer(0, "head");
 					}
 
-					if ( FollowerMenu.followerToCommand )
+					if ( followerMenu.followerToCommand )
 					{
 						if ( players[PLAYER_NUM] && players[PLAYER_NUM]->entity
-							&& FollowerMenu.followerToCommand->monsterTarget == players[PLAYER_NUM]->entity->getUID() )
+							&& followerMenu.followerToCommand->monsterTarget == players[PLAYER_NUM]->entity->getUID() )
 						{
 							// your ally is angry at you!
-							FollowerMenu.followerToCommand = nullptr;
-							FollowerMenu.optionPrevious = -1;
+							followerMenu.followerToCommand = nullptr;
+							followerMenu.optionPrevious = -1;
 						}
 						else
 						{
-							FollowerMenu.recentEntity = FollowerMenu.followerToCommand;
-							FollowerMenu.initFollowerMenuGUICursor(true);
-							FollowerMenu.updateScrollPartySheet();
-							selectedEntity = NULL;
+							followerMenu.recentEntity = followerMenu.followerToCommand;
+							followerMenu.initfollowerMenuGUICursor(true);
+							followerMenu.updateScrollPartySheet();
+							selectedEntity[PLAYER_NUM] = NULL;
 						}
 					}
 				}
-				if ( selectedEntity )
+				if ( selectedEntity[PLAYER_NUM] )
 				{
-					*inputPressed(impulses[IN_USE]) = 0;
-					*inputPressed(joyimpulses[INJOY_GAME_USE]) = 0;
+					*inputPressedForPlayer(PLAYER_NUM, impulses[IN_USE]) = 0;
+					inputs.controllerClearInput(PLAYER_NUM, INJOY_GAME_USE);
 					bool foundTinkeringKit = false;
-					if ( entityDist(my, selectedEntity) <= TOUCHRANGE )
+					if ( entityDist(my, selectedEntity[PLAYER_NUM]) <= TOUCHRANGE )
 					{
 						inrange[PLAYER_NUM] = true;
 
-						if ( (selectedEntity->behavior == &actItem 
-							|| selectedEntity->behavior == &actTorch
-							|| selectedEntity->behavior == &actCrystalShard)
-							&& stats[clientnum] && stats[clientnum]->shield && stats[clientnum]->defending
-							&& stats[clientnum]->shield->type == TOOL_TINKERING_KIT )
+						if ( (selectedEntity[PLAYER_NUM]->behavior == &actItem
+							|| selectedEntity[PLAYER_NUM]->behavior == &actTorch
+							|| selectedEntity[PLAYER_NUM]->behavior == &actCrystalShard)
+							&& stats[PLAYER_NUM] && stats[PLAYER_NUM]->shield && stats[PLAYER_NUM]->defending
+							&& stats[PLAYER_NUM]->shield->type == TOOL_TINKERING_KIT )
 						{
 							foundTinkeringKit = true;
 						}
-						if ( foundTinkeringKit && (clientnum == 0 || splitscreen) )
+						if ( foundTinkeringKit && (players[PLAYER_NUM]->isLocalPlayer()) )
 						{
-							selectedEntity->itemAutoSalvageByPlayer = static_cast<Sint32>(players[PLAYER_NUM]->entity->getUID());
+							selectedEntity[PLAYER_NUM]->itemAutoSalvageByPlayer = static_cast<Sint32>(players[PLAYER_NUM]->entity->getUID());
 						}
 					}
 					else
@@ -3193,8 +3796,8 @@ void actPlayer(Entity* my)
 							{
 								strcpy((char*)net_packet->data, "CKIR");
 								if ( stats[PLAYER_NUM]->type == RAT
-									&& selectedEntity->behavior == &actItem
-									&& selectedEntity->itemShowOnMap == 1 )
+									&& selectedEntity[PLAYER_NUM]->behavior == &actItem
+									&& selectedEntity[PLAYER_NUM]->itemShowOnMap == 1 )
 								{
 									strcpy((char*)net_packet->data, "RATF");
 								}
@@ -3205,13 +3808,13 @@ void actPlayer(Entity* my)
 							strcpy((char*)net_packet->data, "CKOR");
 						}
 						net_packet->data[4] = PLAYER_NUM;
-						if (selectedEntity->behavior == &actPlayerLimb)
+						if ( selectedEntity[PLAYER_NUM]->behavior == &actPlayerLimb)
 						{
-							SDLNet_Write32((Uint32)players[selectedEntity->skill[2]]->entity->getUID(), &net_packet->data[5]);
+							SDLNet_Write32((Uint32)players[selectedEntity[PLAYER_NUM]->skill[2]]->entity->getUID(), &net_packet->data[5]);
 						}
 						else
 						{
-							Entity* tempEntity = uidToEntity(selectedEntity->skill[2]);
+							Entity* tempEntity = uidToEntity(selectedEntity[PLAYER_NUM]->skill[2]);
 							if (tempEntity)
 							{
 								if (tempEntity->behavior == &actMonster)
@@ -3220,12 +3823,12 @@ void actPlayer(Entity* my)
 								}
 								else
 								{
-									SDLNet_Write32((Uint32)selectedEntity->getUID(), &net_packet->data[5]);
+									SDLNet_Write32((Uint32)selectedEntity[PLAYER_NUM]->getUID(), &net_packet->data[5]);
 								}
 							}
 							else
 							{
-								SDLNet_Write32((Uint32)selectedEntity->getUID(), &net_packet->data[5]);
+								SDLNet_Write32((Uint32)selectedEntity[PLAYER_NUM]->getUID(), &net_packet->data[5]);
 							}
 						}
 						net_packet->address.host = net_server.host;
@@ -3242,14 +3845,15 @@ void actPlayer(Entity* my)
 	{
 		for (i = 0; i < MAXPLAYERS; i++)
 		{
-			if ((i == 0 && selectedEntity == my) || (client_selected[i] == my) || i == PLAYER_CLICKED - 1)
+			if ((i == 0 && selectedEntity[0] == my) || (client_selected[i] == my)
+				|| i == PLAYER_CLICKED - 1 || (i > 0 && splitscreen && selectedEntity[i] == my) )
 			{
 				PLAYER_CLICKED = 0;
 				if (inrange[i] && i != PLAYER_NUM)
 				{
 					messagePlayer(i, language[575], stats[PLAYER_NUM]->name, stats[PLAYER_NUM]->HP, stats[PLAYER_NUM]->MAXHP, stats[PLAYER_NUM]->MP, stats[PLAYER_NUM]->MAXMP);
 					messagePlayer(PLAYER_NUM, language[576], stats[i]->name);
-					if (PLAYER_NUM == clientnum && players[i] && players[i]->entity)
+					if ( players[PLAYER_NUM]->isLocalPlayer() && players[i] && players[i]->entity)
 					{
 						double tangent = atan2(my->y - players[i]->entity->y, my->x - players[i]->entity->x);
 						PLAYER_VELX += cos(tangent);
@@ -3263,11 +3867,11 @@ void actPlayer(Entity* my)
 	// torch light
 	if ( !intro )
 	{
-		if ( multiplayer == SERVER || PLAYER_NUM == clientnum || splitscreen )
+		if ( multiplayer == SERVER || players[PLAYER_NUM]->isLocalPlayer() )
 		{
 			if ( stats[PLAYER_NUM]->shield != NULL && (showEquipment && isHumanoid) && !itemTypeIsQuiver(stats[PLAYER_NUM]->shield->type) )
 			{
-				if ( PLAYER_NUM == clientnum || splitscreen)
+				if ( players[PLAYER_NUM]->isLocalPlayer() )
 				{
 					if ( stats[PLAYER_NUM]->shield->type == TOOL_TORCH )
 					{
@@ -3312,7 +3916,7 @@ void actPlayer(Entity* my)
 			}
 			else
 			{
-				if ( (PLAYER_NUM == clientnum || splitscreen) && !PLAYER_DEBUGCAM )
+				if ( (players[PLAYER_NUM]->isLocalPlayer()) && !PLAYER_DEBUGCAM )
 				{
 					PLAYER_TORCH = 3 + (my->getPER() / 3);
 					if ( playerRace == RAT )
@@ -3346,7 +3950,7 @@ void actPlayer(Entity* my)
 	}
 
 	// server controls players primarily
-	if ( PLAYER_NUM == clientnum || multiplayer == SERVER || splitscreen )
+	if ( players[PLAYER_NUM]->isLocalPlayer() || multiplayer == SERVER )
 	{
 		// set head model
 		if ( playerRace != HUMAN )
@@ -3477,7 +4081,7 @@ void actPlayer(Entity* my)
 					{
 						my->flags[PASSABLE] = true;
 						serverUpdateEntityFlag(my, PASSABLE);
-						if ( clientnum == PLAYER_NUM || splitscreen )
+						if ( players[PLAYER_NUM]->isLocalPlayer() )
 						{
 							// deathcam
 							entity = newEntity(-1, 1, map.entities, nullptr); //Deathcam entity.
@@ -3632,7 +4236,7 @@ void actPlayer(Entity* my)
 										followerStats->leader_uid = 0;
 									}
 									list_RemoveNode(node);
-									if ( PLAYER_NUM != clientnum && !splitscreen )
+									if ( !players[PLAYER_NUM]->isLocalPlayer() )
 									{
 										serverRemoveClientFollower(PLAYER_NUM, myFollower->getUID());
 									}
@@ -3649,7 +4253,7 @@ void actPlayer(Entity* my)
 							sendPacketSafe(net_sock, -1, net_packet, player-1);
 						}
 						*/
-						if ( clientnum == PLAYER_NUM || splitscreen )
+						if ( players[PLAYER_NUM]->isLocalPlayer() )
 						{
 							if ( (stats[PLAYER_NUM]->type != AUTOMATON) 
 								|| (stats[PLAYER_NUM]->type == AUTOMATON && my->playerCreatedDeathCam == 0) )
@@ -3681,7 +4285,7 @@ void actPlayer(Entity* my)
 								}
 							}
 
-							closeBookGUI();
+							players[PLAYER_NUM]->bookGUI.closeBookGUI();
 
 #ifdef SOUND
 							levelmusicplaying = true;
@@ -3696,7 +4300,7 @@ void actPlayer(Entity* my)
 #endif
 							combat = false;
 
-							if ( PLAYER_NUM == clientnum 
+							if ( players[PLAYER_NUM]->isLocalPlayer()
 								&& gameModeManager.getMode() == GameModeManager_t::GAME_MODE_TUTORIAL )
 							{
 								if ( !strncmp(map.name, "Tutorial Hub", 12) )
@@ -3721,7 +4325,7 @@ void actPlayer(Entity* my)
 									}
 									if ( item->type >= ARTIFACT_SWORD && item->type <= ARTIFACT_GLOVES )
 									{
-										if ( itemIsEquipped(item, clientnum) )
+										if ( itemIsEquipped(item, PLAYER_NUM) )
 										{
 											steamAchievement("BARONY_ACH_CHOSEN_ONE");
 										}
@@ -3762,7 +4366,7 @@ void actPlayer(Entity* my)
 										entity->skill[15] = item->identified;
 									}
 								}
-								if ( multiplayer != SINGLE )
+								if ( multiplayer != SINGLE || splitscreen )
 								{
 									for ( node = stats[PLAYER_NUM]->inventory.first; node != nullptr; node = nextnode )
 									{
@@ -3774,16 +4378,16 @@ void actPlayer(Entity* my)
 										}
 										list_RemoveNode(node);
 									}
-									stats[0]->helmet = NULL;
-									stats[0]->breastplate = NULL;
-									stats[0]->gloves = NULL;
-									stats[0]->shoes = NULL;
-									stats[0]->shield = NULL;
-									stats[0]->weapon = NULL;
-									stats[0]->cloak = NULL;
-									stats[0]->amulet = NULL;
-									stats[0]->ring = NULL;
-									stats[0]->mask = NULL;
+									stats[PLAYER_NUM]->helmet = NULL;
+									stats[PLAYER_NUM]->breastplate = NULL;
+									stats[PLAYER_NUM]->gloves = NULL;
+									stats[PLAYER_NUM]->shoes = NULL;
+									stats[PLAYER_NUM]->shield = NULL;
+									stats[PLAYER_NUM]->weapon = NULL;
+									stats[PLAYER_NUM]->cloak = NULL;
+									stats[PLAYER_NUM]->amulet = NULL;
+									stats[PLAYER_NUM]->ring = NULL;
+									stats[PLAYER_NUM]->mask = NULL;
 								}
 							}
 							else
@@ -3962,7 +4566,7 @@ void actPlayer(Entity* my)
 		}
 	}
 
-	if ( (PLAYER_NUM == clientnum || splitscreen) && intro == false )
+	if ( (players[PLAYER_NUM]->isLocalPlayer()) && intro == false )
 	{
 		// effects of drunkenness
 		if ( (stats[PLAYER_NUM]->EFFECTS[EFF_DRUNK] && (stats[PLAYER_NUM]->type != GOATMAN))
@@ -3993,7 +4597,7 @@ void actPlayer(Entity* my)
 
 		if ( !my->isMobile() )
 		{
-			if ( (clientnum == PLAYER_NUM || splitscreen) && openedChest[PLAYER_NUM] )
+			if ( (players[PLAYER_NUM]->isLocalPlayer()) && openedChest[PLAYER_NUM] )
 			{
 				openedChest[PLAYER_NUM]->closeChest();
 			}
@@ -4009,15 +4613,15 @@ void actPlayer(Entity* my)
 
 		if ( !usecamerasmoothing )
 		{
-			handlePlayerMovement(my, PLAYER_NUM, false);
-			handlePlayerCameraUpdate(my, PLAYER_NUM, false);
+			players[PLAYER_NUM]->movement.handlePlayerMovement(false);
+			players[PLAYER_NUM]->movement.handlePlayerCameraUpdate(false);
 		}
 
 		// send movement updates to server
 		if ( multiplayer == CLIENT )
 		{
 			strcpy((char*)net_packet->data, "PMOV");
-			net_packet->data[4] = clientnum;
+			net_packet->data[4] = PLAYER_NUM;
 			net_packet->data[5] = currentlevel;
 			SDLNet_Write16((Sint16)(my->x * 32), &net_packet->data[6]);
 			SDLNet_Write16((Sint16)(my->y * 32), &net_packet->data[8]);
@@ -4070,7 +4674,7 @@ void actPlayer(Entity* my)
 		}
 	}
 
-	if ( PLAYER_NUM != clientnum && multiplayer == SERVER )
+	if ( !players[PLAYER_NUM]->isLocalPlayer() && multiplayer == SERVER )
 	{
 		// PLAYER_VEL* skills updated by messages sent to server from client
 
@@ -4120,12 +4724,12 @@ void actPlayer(Entity* my)
 		}
 	}
 
-	if ( PLAYER_NUM != clientnum && multiplayer == CLIENT )
+	if ( !players[PLAYER_NUM]->isLocalPlayer() && multiplayer == CLIENT )
 	{
 		dist = sqrt(PLAYER_VELX * PLAYER_VELX + PLAYER_VELY * PLAYER_VELY);
 	}
 
-	if ( (PLAYER_NUM == clientnum || splitscreen) && ticks % 65 == 0 )
+	if ( (players[PLAYER_NUM]->isLocalPlayer()) && ticks % 65 == 0 )
 	{
 		for ( node_t* mapNode = map.creatures->first; mapNode != nullptr; mapNode = mapNode->next )
 		{
@@ -4218,7 +4822,7 @@ void actPlayer(Entity* my)
 						bendArm = false;
 					}
 
-					if ( insectoidLevitating[PLAYER_NUM] )
+					if ( insectoidLevitating )
 					{
 						// hands stationary, legs pitched back and little swing.
 						limbSpeed = 0.03;
@@ -4396,7 +5000,7 @@ void actPlayer(Entity* my)
 							}
 						}
 
-						if ( PLAYER_ATTACK == PLAYER_POSE_GOLEM_SMASH && (PLAYER_NUM == clientnum || splitscreen) )
+						if ( PLAYER_ATTACK == PLAYER_POSE_GOLEM_SMASH && (players[PLAYER_NUM]->isLocalPlayer()) )
 						{
 							if ( my->pitch < PI / 32 )
 							{
@@ -4507,7 +5111,7 @@ void actPlayer(Entity* my)
 						{
 							// move the head.
 							//limbAnimateToLimit(my, ANIMATE_PITCH, -0.1, 11 * PI / 6, true, 0.1);
-							if ( (PLAYER_NUM == clientnum || splitscreen) && PLAYER_ATTACK == MONSTER_POSE_SPECIAL_WINDUP1 )
+							if ( (players[PLAYER_NUM]->isLocalPlayer()) && PLAYER_ATTACK == MONSTER_POSE_SPECIAL_WINDUP1 )
 							{
 								if ( my->pitch > -PI / 12 )
 								{
@@ -4647,7 +5251,7 @@ void actPlayer(Entity* my)
 					entity->pitch = entity->fskill[0];
 				}
 
-				if ( insectoidLevitating[PLAYER_NUM] )
+				if ( insectoidLevitating )
 				{
 					// hands stationary, legs pitched back and little swing.
 					double limbSpeed = 0.03;
@@ -4880,12 +5484,12 @@ void actPlayer(Entity* my)
 								// successfully set sprite for the human model
 							}
 						}
-						if ( (!PLAYER_ARMBENDED && showEquipment) || (insectoidLevitating[PLAYER_NUM] && PLAYER_ATTACK == 0 && PLAYER_ATTACKTIME == 0) )
+						if ( (!PLAYER_ARMBENDED && showEquipment) || (insectoidLevitating && PLAYER_ATTACK == 0 && PLAYER_ATTACKTIME == 0) )
 						{
 							entity->sprite += 2 * (stats[PLAYER_NUM]->weapon != NULL);
 
 							if ( stats[PLAYER_NUM]->weapon == nullptr
-								&& insectoidLevitating[PLAYER_NUM] )
+								&& insectoidLevitating )
 							{
 								entity->sprite += 2;
 							}
@@ -4968,7 +5572,7 @@ void actPlayer(Entity* my)
 						if ( showEquipment )
 						{
 							bool bendArm = false;
-							if ( insectoidLevitating[PLAYER_NUM] )
+							if ( insectoidLevitating )
 							{
 								bendArm = true;
 							}
@@ -5023,7 +5627,7 @@ void actPlayer(Entity* my)
 						if ( shield->flags[INVISIBLE] )
 						{
 							bendArm = false;
-							if ( insectoidLevitating[PLAYER_NUM] )
+							if ( insectoidLevitating )
 							{
 								bendArm = true;
 							}
@@ -5498,7 +6102,7 @@ void actPlayer(Entity* my)
 						{
 							if ( moving )
 							{
-								if ( insectoidLevitating[PLAYER_NUM] )
+								if ( insectoidLevitating )
 								{
 									entity->fskill[0] += std::min(std::max(0.2, dist * PLAYERWALKSPEED), 2.f * PLAYERWALKSPEED); // move proportional to move speed
 								}
@@ -5528,7 +6132,7 @@ void actPlayer(Entity* my)
 						{
 							if ( moving )
 							{
-								if ( insectoidLevitating[PLAYER_NUM] )
+								if ( insectoidLevitating )
 								{
 									entity->fskill[0] -= std::min(std::max(0.15, dist * PLAYERWALKSPEED), 2.f * PLAYERWALKSPEED);
 								}
@@ -5667,7 +6271,10 @@ void actPlayer(Entity* my)
 		PLAYER_ATTACKTIME = 0;
 	}
 
-	handlePlayerCameraPosition(my, PLAYER_NUM, false);
+	if ( !usecamerasmoothing )
+	{
+		players[PLAYER_NUM]->movement.handlePlayerCameraPosition(false);
+	}
 }
 
 // client function
@@ -5706,11 +6313,15 @@ void actPlayerLimb(Entity* my)
 		{
 			if ( inrange[i] )
 			{
-				if ( i == 0 && selectedEntity == my )
+				if ( i == 0 && selectedEntity[0] == my )
 				{
 					parent->skill[14] = i + 1;
 				}
 				else if ( client_selected[i] == my )
+				{
+					parent->skill[14] = i + 1;
+				}
+				else if ( i > 0 && splitscreen && selectedEntity[i] == my )
 				{
 					parent->skill[14] = i + 1;
 				}
@@ -5801,7 +6412,7 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 200 )
 						{
 							playSound(342, orangeSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2616]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2616]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5809,12 +6420,12 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 200 )
 						{
 							playSound(344, blueSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2618]);
+							messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2618]);
 						}
 						else if ( timeDiff == 350 )
 						{
 							playSound(345, orangeSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2619]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2619]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5822,12 +6433,12 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 200 )
 						{
 							playSound(347, blueSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2621]);
+							messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2621]);
 						}
 						else if ( timeDiff == 350 )
 						{
 							playSound(348, orangeSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2622]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2622]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5842,12 +6453,12 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 200 )
 						{
 							playSound(350, orangeSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2630]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2630]);
 						}
 						else if ( timeDiff == 350 )
 						{
 							playSound(351, blueSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2631]);
+							messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2631]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5855,7 +6466,7 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 350 )
 						{
 							playSound(353, blueSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2633]);
+							messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2633]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5863,7 +6474,7 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 200 )
 						{
 							playSound(355, orangeSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2635]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2635]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5878,11 +6489,11 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 350 )
 						{
 							playSound(357, orangeSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2637]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2637]);
 						}
 						else if ( timeDiff == 500 )
 						{
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2652]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2652]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5897,11 +6508,11 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 350 )
 						{
 							playSound(359, orangeSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2639]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2639]);
 						}
 						else if ( timeDiff == 510 )
 						{
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2653]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2653]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5916,7 +6527,7 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 200 )
 						{
 							playSound(361, blueSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2641]);
+							messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2641]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5924,7 +6535,7 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 350 )
 						{
 							playSound(363, orangeSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2643]);
+							messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2643]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5939,7 +6550,7 @@ void Entity::playerLevelEntrySpeechSecond()
 						if ( timeDiff == 310 )
 						{
 							playSound(365, blueSpeechVolume);
-							messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2645]);
+							messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2645]);
 							playerLevelEntrySpeech = 0;
 						}
 						break;
@@ -5959,7 +6570,7 @@ void Entity::playerLevelEntrySpeechSecond()
 							if ( timeDiff == 200 )
 							{
 								playSound(367, orangeSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2624]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2624]);
 								playerLevelEntrySpeech = 0;
 							}
 							break;
@@ -5967,7 +6578,7 @@ void Entity::playerLevelEntrySpeechSecond()
 							if ( timeDiff == 200 )
 							{
 								playSound(369, blueSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorBaronyBlue(*mainsurface), language[2626]);
+								messageLocalPlayersColor(uint32ColorBaronyBlue(*mainsurface), language[2626]);
 								playerLevelEntrySpeech = 0;
 							}
 							break;
@@ -5975,7 +6586,7 @@ void Entity::playerLevelEntrySpeechSecond()
 							if ( timeDiff == 200 )
 							{
 								playSound(371, orangeSpeechVolume);
-								messagePlayerColor(clientnum, uint32ColorOrange(*mainsurface), language[2628]);
+								messageLocalPlayersColor(uint32ColorOrange(*mainsurface), language[2628]);
 								playerLevelEntrySpeech = 0;
 							}
 							break;

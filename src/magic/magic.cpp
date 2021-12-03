@@ -125,7 +125,7 @@ void spell_detectFoodEffectOnMap(int player)
 void spell_summonFamiliar(int player)
 {
 	// server only function
-	if ( players[player] == nullptr || players[player]->entity == nullptr )
+	if ( player < 0 || players[player] == nullptr || players[player]->entity == nullptr )
 	{
 		return;
 	}
@@ -245,7 +245,7 @@ void spell_summonFamiliar(int player)
 				*myuid = monster->getUID();
 
 				// update client followers
-				if ( player > 0 && multiplayer == SERVER )
+				if ( player > 0 && multiplayer == SERVER && !players[player]->isLocalPlayer() )
 				{
 					strcpy((char*)net_packet->data, "LEAD");
 					SDLNet_Write32((Uint32)monster->getUID(), &net_packet->data[4]);
@@ -259,9 +259,9 @@ void spell_summonFamiliar(int player)
 					serverUpdateAllyStat(player, monster->getUID(), monsterStats->LVL, monsterStats->HP, monsterStats->MAXHP, monsterStats->type);
 				}
 
-				if ( !FollowerMenu.recentEntity && player == clientnum )
+				if ( !FollowerMenu[player].recentEntity && players[player]->isLocalPlayer() )
 				{
-					FollowerMenu.recentEntity = monster;
+					FollowerMenu[player].recentEntity = monster;
 				}
 			}
 		}
@@ -1569,7 +1569,7 @@ void spellEffectCharmMonster(Entity& my, spellElement_t& element, Entity* parent
 							updateEnemyBar(parent, hit.entity, hitstats->name, hitstats->HP, hitstats->MAXHP);
 						}
 					}
-					if ( hitstats->type == SHOPKEEPER && player >= 0 )
+					if ( hitstats->type == SHOPKEEPER && parent && parent->behavior == &actPlayer )
 					{
 						// reverses shop keeper grudges.
 						swornenemies[SHOPKEEPER][HUMAN] = false;
@@ -1604,7 +1604,7 @@ void spellEffectCharmMonster(Entity& my, spellElement_t& element, Entity* parent
 	return;
 }
 
-Entity* spellEffectPolymorph(Entity* target, Stat* targetStats, Entity* parent, bool fromMagicSpell, int customDuration)
+Entity* spellEffectPolymorph(Entity* target, Entity* parent, bool fromMagicSpell, int customDuration)
 {
 	int effectDuration = 0;
 	effectDuration = TICKS_PER_SECOND * 60 * (4 + rand() % 3); // 4-6 minutes
@@ -1612,7 +1612,7 @@ Entity* spellEffectPolymorph(Entity* target, Stat* targetStats, Entity* parent, 
 	{
 		effectDuration = customDuration;
 	}
-	if ( !target || !targetStats )
+	if ( !target || !target->getStats() )
 	{
 		if ( parent && parent->behavior == &actPlayer )
 		{
@@ -1620,6 +1620,8 @@ Entity* spellEffectPolymorph(Entity* target, Stat* targetStats, Entity* parent, 
 		}
 		return nullptr;
 	}
+
+	Stat* targetStats = target->getStats();
 
 	if ( targetStats->type == LICH || targetStats->type == SHOPKEEPER || targetStats->type == DEVIL
 		|| targetStats->type == MINOTAUR || targetStats->type == LICH_FIRE || targetStats->type == LICH_ICE
@@ -1865,16 +1867,16 @@ Entity* spellEffectPolymorph(Entity* target, Stat* targetStats, Entity* parent, 
 										if ( *((Uint32*)allyNode->element) == target->getUID() )
 										{
 											list_RemoveNode(allyNode);
-											if ( c != clientnum )
+											if ( !players[c]->isLocalPlayer() )
 											{
 												serverRemoveClientFollower(c, target->getUID());
 											}
 											else
 											{
-												if ( FollowerMenu.recentEntity && (FollowerMenu.recentEntity->getUID() == 0
-													|| FollowerMenu.recentEntity->getUID() == target->getUID()) )
+												if ( FollowerMenu[c].recentEntity && (FollowerMenu[c].recentEntity->getUID() == 0
+													|| FollowerMenu[c].recentEntity->getUID() == target->getUID()) )
 												{
-													FollowerMenu.recentEntity = nullptr;
+													FollowerMenu[c].recentEntity = nullptr;
 												}
 											}
 											break;
@@ -2449,7 +2451,7 @@ bool spellEffectTeleportPull(Entity* my, spellElement_t& element, Entity* parent
 				locationTimer->sizey = 4;
 				if ( !locationTimer->myTileListNode )
 				{
-					locationTimer->setUID(-2);
+					locationTimer->setUID(-2); // to avoid being excluded by TileEntityList
 					TileEntityList.addEntity(*locationTimer);
 					locationTimer->setUID(-3);
 				}

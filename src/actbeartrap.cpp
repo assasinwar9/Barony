@@ -48,6 +48,11 @@ void actBeartrap(Entity* my)
 		my->z = 6.75;
 	}
 
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
+
 	if ( multiplayer == CLIENT )
 	{
 		return;
@@ -56,7 +61,7 @@ void actBeartrap(Entity* my)
 	// undo beartrap
 	for (i = 0; i < MAXPLAYERS; i++)
 	{
-		if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+		if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 		{
 			if (inrange[i])
 			{
@@ -160,11 +165,11 @@ void actBeartrap(Entity* my)
 						int player = entity->skill[2];
 						Uint32 color = SDL_MapRGB(mainsurface->format, 255, 0, 0);
 						messagePlayerColor(player, color, language[454]);
-						if ( player > 0 )
+						if ( !players[player]->isLocalPlayer() )
 						{
 							serverUpdateEffects(player);
 						}
-						if ( player == clientnum || splitscreen )
+						if ( players[player]->isLocalPlayer() )
 						{
 							cameravars[entity->skill[2]].shakex += .1;
 							cameravars[entity->skill[2]].shakey += 10;
@@ -507,7 +512,11 @@ void bombDoEffect(Entity* my, Entity* triggered, real_t entityDistance, bool spa
 	{
 		damage *= triggered->getDamageTableMultiplier(*stat, DAMAGE_TABLE_MAGIC); // reduce/increase by magic table.
 	}
-	bool wasAsleep = stat->EFFECTS[EFF_ASLEEP];
+	bool wasAsleep = false;
+	if ( stat )
+	{
+		wasAsleep = stat->EFFECTS[EFF_ASLEEP];
+	}
 	triggered->modHP(-damage);
 	triggered->setObituary(language[3496]);
 
@@ -537,7 +546,7 @@ void bombDoEffect(Entity* my, Entity* triggered, real_t entityDistance, bool spa
 	{
 		int player = triggered->skill[2];
 		
-		if ( player == clientnum || splitscreen )
+		if ( players[player]->isLocalPlayer() )
 		{
 			cameravars[triggered->skill[2]].shakex += .1;
 			cameravars[triggered->skill[2]].shakey += 10;
@@ -636,6 +645,10 @@ void bombDoEffect(Entity* my, Entity* triggered, real_t entityDistance, bool spa
 
 void actBomb(Entity* my)
 {
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
 	my->removeLightField();
 	if ( multiplayer == CLIENT )
 	{
@@ -654,7 +667,7 @@ void actBomb(Entity* my)
 	// undo bomb
 	for ( int i = 0; i < MAXPLAYERS; i++ )
 	{
-		if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+		if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 		{
 			if ( inrange[i] )
 			{

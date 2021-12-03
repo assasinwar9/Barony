@@ -15,7 +15,14 @@
 
 // function prototypes
 real_t entityDist(Entity* my, Entity* your);
-Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player);
+enum EntityClickType
+{
+	ENTITY_CLICK_USE,
+	ENTITY_CLICK_USE_TOOLTIPS_ONLY,
+	ENTITY_CLICK_HELD_USE_TOOLTIPS_ONLY,
+	ENTITY_CLICK_FOLLOWER_INTERACT
+};
+Entity* entityClicked(bool* clickedOnGUI, bool clickCheckOverride, int player, EntityClickType clicktype);
 bool entityInsideTile(Entity* entity, int x, int y, int z, bool checkSafeTiles = false);
 bool entityInsideEntity(Entity* entity1, Entity* entity2);
 bool entityInsideSomething(Entity* entity);

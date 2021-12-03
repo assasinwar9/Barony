@@ -61,6 +61,11 @@ void Entity::actPowerCrystal()
 	//this->light = lightSphereShadow(this->x / 16, this->y / 16, 3, 64);
 	//messagePlayer(0, "vel z: %f", this->vel_z);
 
+	if ( ticks == 1 )
+	{
+		this->createWorldUITooltip();
+	}
+
 	if ( !crystalInitialised && !crystalSpellToActivate )
 	{
 		if ( this->z > crystalStartZ )
@@ -188,7 +193,7 @@ void Entity::actPowerCrystal()
 
 	for ( i = 0; i < MAXPLAYERS; i++ )
 	{
-		if ( ((i == 0 && selectedEntity == this) || (client_selected[i] == this)) && crystalTurning == 0 )
+		if ( ((i == 0 && selectedEntity[0] == this) || (client_selected[i] == this) || (splitscreen && selectedEntity[i] == this)) && crystalTurning == 0 )
 		{
 			if ( inrange[i] )
 			{

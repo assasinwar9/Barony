@@ -38,8 +38,6 @@ Sint8 keystatus[512];
 char* inputstr = nullptr;
 int inputlen = 0;
 Sint8 mousestatus[6];
-Sint8 joystatus[NUM_JOY_STATUS];
-Sint8 joy_trigger_status[NUM_JOY_TRIGGER_STATUS];
 Entity** clickmap = nullptr;
 bool capture_mouse = true;
 string lastname;
@@ -197,7 +195,11 @@ std::unordered_map<int, Uint32> safePacketsReceivedMap[MAXPLAYERS];
 bool receivedclientnum = false;
 char const * window_title = nullptr;
 bool softwaremode = false;
-SDL_TimerID timer;
+#ifdef NINTENDO
+ std::chrono::time_point<std::chrono::steady_clock> lastTick;
+#else
+ SDL_TimerID timer;
+#endif // NINTENDO
 SDL_Window* screen = nullptr;
 #ifdef APPLE
 SDL_Renderer* renderer = nullptr;
@@ -246,7 +248,6 @@ int globalLightSmoothingRate = 1;
 int globalLightModifierActive = 0;
 
 // game variables
-bool shootmode = false;
 Sint8 minimap[MINIMAP_MAX_DIMENSION][MINIMAP_MAX_DIMENSION];
 bool loadnextlevel = false;
 int skipLevelsOnLoad = 0;
@@ -386,6 +387,9 @@ SDL_Surface* title_bmp = nullptr;
 SDL_Surface* logo_bmp = nullptr;
 SDL_Surface* cursor_bmp = nullptr;
 SDL_Surface* cross_bmp = nullptr;
+SDL_Surface* selected_cursor_bmp = nullptr;
+SDL_Surface* controllerglyphs1_bmp = nullptr;
+SDL_Surface* skillIcons_bmp = nullptr;
 int shaking = 0, bobbing = 0;
 bool fadeout = false, fadefinished = false;
 int fadealpha = 0;

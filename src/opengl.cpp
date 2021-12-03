@@ -13,6 +13,7 @@
 #include "draw.hpp"
 #include "entity.hpp"
 #include "files.hpp"
+#include "items.hpp"
 
 #ifdef WINDOWS
 PFNGLGENBUFFERSPROC SDL_glGenBuffers;
@@ -25,6 +26,16 @@ PFNGLDELETEVERTEXARRAYSPROC SDL_glDeleteVertexArrays;
 PFNGLENABLEVERTEXATTRIBARRAYPROC SDL_glEnableVertexAttribArray;
 PFNGLVERTEXATTRIBPOINTERPROC SDL_glVertexAttribPointer;
 #endif
+
+void perspectiveGL(GLdouble fovY, GLdouble aspect, GLdouble zNear, GLdouble zFar)
+{
+	GLdouble fW, fH;
+
+	fH = tan(fovY / 360 * PI) * zNear;
+	fW = fH * aspect;
+
+	glFrustum(-fW, fW, -fH, fH, zNear, zFar);
+}
 
 /*-------------------------------------------------------------------------------
 
@@ -109,7 +120,7 @@ void glDrawVoxel(view_t* camera, Entity* entity, int mode)
 	glMatrixMode( GL_PROJECTION );
 	glLoadIdentity();
 	glViewport(camera->winx, yres - camera->winh - camera->winy, camera->winw, camera->winh);
-	gluPerspective(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 2);
+	perspectiveGL(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 2);
 	glEnable( GL_DEPTH_TEST );
 	if ( !entity->flags[OVERDRAW] )
 	{
@@ -151,6 +162,28 @@ void glDrawVoxel(view_t* camera, Entity* entity, int mode)
 	if ( entity->flags[OVERDRAW] || entity->monsterEntityRenderAsTelepath == 1 )
 	{
 		glDepthRange(0, 0.1);
+	}
+
+	bool highlightEntity = false;
+	bool highlightEntityFromParent = false;
+	int player = -1;
+	for ( player = 0; player < MAXPLAYERS; ++player )
+	{
+		if ( &cameras[player] == camera )
+		{
+			break;
+		}
+	}
+	highlightEntity = entity->bEntityHighlightedForPlayer(player);
+	if ( !highlightEntity && (entity->sprite == 184 || entity->sprite == 585 || entity->sprite == 216) ) // lever base/chest lid
+	{
+		Entity* parent = uidToEntity(entity->parent);
+		if ( parent && parent->bEntityHighlightedForPlayer(player) )
+		{
+			entity->highlightForUIGlow = parent->highlightForUIGlow;
+			highlightEntityFromParent = true;
+			highlightEntity = highlightEntityFromParent;
+		}
 	}
 
 	// get shade factor
@@ -404,10 +437,35 @@ void glDrawVoxel(view_t* camera, Entity* entity, int mode)
 					SDL_glBindBuffer(GL_ARRAY_BUFFER, polymodels[modelindex].colors);
 				}
 				glColorPointer(3, GL_FLOAT, 0, 0);
-				GLfloat params_col[4] = {static_cast<GLfloat>(s), static_cast<GLfloat>(s), static_cast<GLfloat>(s), 1.f};
-				glEnable(GL_LIGHTING);
-				glEnable(GL_COLOR_MATERIAL);
-				glLightModelfv(GL_LIGHT_MODEL_AMBIENT, params_col);
+				GLfloat params_col[4] = { static_cast<GLfloat>(s), static_cast<GLfloat>(s), static_cast<GLfloat>(s), 1.f };
+				if ( highlightEntity )
+				{
+					glEnable(GL_LIGHTING);
+					glEnable(GL_LIGHT1);
+					if ( !highlightEntityFromParent )
+					{
+						entity->highlightForUIGlow = (0.05 * (entity->ticks % 41));
+					}
+					real_t highlight = entity->highlightForUIGlow;
+					if ( highlight > 1.0 )
+					{
+						highlight = 1.0 - (highlight - 1.0);
+					}
+					GLfloat ambient[4] = { 
+						static_cast<GLfloat>(.15 + highlight * .15), 
+						static_cast<GLfloat>(.15 + highlight * .15), 
+						static_cast<GLfloat>(.15 + highlight * .15),
+						1.f };
+					glLightModelfv(GL_LIGHT_MODEL_AMBIENT, params_col);
+					glLightfv(GL_LIGHT1, GL_AMBIENT, ambient);
+					glEnable(GL_COLOR_MATERIAL);
+				}
+				else
+				{
+					glEnable(GL_LIGHTING);
+					glEnable(GL_COLOR_MATERIAL);
+					glLightModelfv(GL_LIGHT_MODEL_AMBIENT, params_col);
+				}
 			}
 			else
 			{
@@ -424,6 +482,10 @@ void glDrawVoxel(view_t* camera, Entity* entity, int mode)
 			{
 				glDisable(GL_COLOR_MATERIAL);
 				glDisable(GL_LIGHTING);
+				if ( highlightEntity )
+				{
+					glDisable(GL_LIGHT1);
+				}
 				glDisableClientState(GL_COLOR_ARRAY); // disable the color array on the client side
 			}
 			glDisableClientState(GL_VERTEX_ARRAY); // disable the vertex array on the client side
@@ -440,6 +502,405 @@ void glDrawVoxel(view_t* camera, Entity* entity, int mode)
 	Draws a 2D sprite to represent an object in 3D
 
 -------------------------------------------------------------------------------*/
+SDL_Surface* glTextSurface(std::string text, GLuint* outTextId)
+{
+	SDL_Surface* image = sprites[0];
+	GLuint textureId = texid[sprites[0]->refcount];
+	char textToRetrieve[128];
+	strncpy(textToRetrieve, text.c_str(), 127);
+	textToRetrieve[std::min(static_cast<int>(strlen(text.c_str())), 127)] = '\0';
+
+	if ( (image = ttfTextHashRetrieve(ttfTextHash, textToRetrieve, ttf12, true)) != NULL )
+	{
+		textureId = texid[image->refcount];
+	}
+	else
+	{
+		// create the text outline surface
+		TTF_SetFontOutline(ttf12, 2);
+		SDL_Color sdlColorBlack = { 0, 0, 0, 255 };
+		image = TTF_RenderUTF8_Blended(ttf12, textToRetrieve, sdlColorBlack);
+
+		// create the text surface
+		TTF_SetFontOutline(ttf12, 0);
+		SDL_Color sdlColorWhite = { 255, 255, 255, 255 };
+		SDL_Surface* textSurf = TTF_RenderUTF8_Blended(ttf12, textToRetrieve, sdlColorWhite);
+
+		// combine the surfaces
+		SDL_Rect pos;
+		pos.x = 2;
+		pos.y = 2;
+		pos.h = 0;
+		pos.w = 0;
+
+		SDL_BlitSurface(textSurf, NULL, image, &pos);
+		SDL_FreeSurface(textSurf);
+		// load the text outline surface as a GL texture
+		allsurfaces[imgref] = image;
+		allsurfaces[imgref]->refcount = imgref;
+		glLoadTexture(allsurfaces[imgref], imgref);
+		imgref++;
+		// store the surface in the text surface cache
+		if ( !ttfTextHashStore(ttfTextHash, textToRetrieve, ttf12, true, image) )
+		{
+			printlog("warning: failed to store text outline surface with imgref %d\n", imgref - 1);
+		}
+		textureId = texid[image->refcount];
+	}
+	if ( outTextId )
+	{
+		*outTextId = textureId;
+	}
+	return image;
+}
+
+void glDrawWorldUISprite(view_t* camera, Entity* entity, int mode)
+{
+	SDL_Surface* sprite;
+	real_t s = 1;
+
+	if ( !entity )
+	{
+		return;
+	}
+	if ( !uidToEntity(entity->parent) )
+	{
+		return;
+	}
+	int player = -1;
+	if ( entity->behavior == &actSpriteWorldTooltip )
+	{
+		if ( entity->worldTooltipIgnoreDrawing != 0 )
+		{
+			return;
+		}
+		for ( player = 0; player < MAXPLAYERS; ++player )
+		{
+			if ( &cameras[player] == camera )
+			{
+				break;
+			}
+		}
+		if ( player >= 0 && player < MAXPLAYERS )
+		{
+			if ( entity->worldTooltipPlayer != player )
+			{
+				return;
+			}
+			if ( entity->worldTooltipActive == 0 && entity->worldTooltipFadeDelay == 0 )
+			{
+				return;
+			}
+		}
+		else
+		{
+			return;
+		}
+	}
+
+	// setup projection
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glViewport(camera->winx, yres - camera->winh - camera->winy, camera->winw, camera->winh);
+	perspectiveGL(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 2);
+	glEnable(GL_DEPTH_TEST);
+	if ( !entity->flags[OVERDRAW] || entity->flags[OVERDRAW] )
+	{
+		GLfloat rotx = camera->vang * 180 / PI; // get x rotation
+		GLfloat roty = (camera->ang - 3 * PI / 2) * 180 / PI; // get y rotation
+		GLfloat rotz = 0; // get z rotation
+		glRotatef(rotx, 1, 0, 0); // rotate pitch
+		glRotatef(roty, 0, 1, 0); // rotate yaw
+		glRotatef(rotz, 0, 0, 1); // rotate roll
+		glTranslatef(-camera->x * 32, camera->z, -camera->y * 32); // translates the scene based on camera position
+	}
+	else
+	{
+		glRotatef(90, 0, 1, 0);
+	}
+
+	// setup model matrix
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	glPushMatrix();
+	if ( mode == REALCOLORS )
+	{
+		glEnable(GL_BLEND);
+	}
+	else
+	{
+		glDisable(GL_BLEND);
+	}
+
+	// assign texture
+	TempTexture* tex = nullptr;
+	if ( entity->behavior == &actSpriteWorldTooltip )
+	{
+		Entity* parent = uidToEntity(entity->parent);
+		if ( parent && parent->behavior == &actItem && (multiplayer != CLIENT || (multiplayer == CLIENT && parent->itemReceivedDetailsFromServer != 0)) )
+		{
+			Item* item = newItemFromEntity(uidToEntity(entity->parent));
+			if ( !item )
+			{
+				return;
+			}
+
+			SDL_Rect tooltip;
+			tooltip.h = TTF12_HEIGHT * 4 + 8;
+			tooltip.w = std::max(13, longestline(item->description())) * TTF12_WIDTH + 8;
+			tooltip.w = std::max(20 * TTF12_WIDTH + 8, tooltip.w);
+			if ( parent->behavior == &actItem )
+			{
+				sprite = SDL_CreateRGBSurface(0, tooltip.w, tooltip.h, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+				SDL_FillRect(sprite, nullptr, SDL_MapRGBA(mainsurface->format, 0, 0, 0, 255));
+				SDL_LockSurface(sprite);
+
+				for ( int x = 0; x < sprite->w; x++ )
+				{
+					Uint32 color = SDL_MapRGBA(mainsurface->format, 0, 192, 255, 255);
+					putPixel(sprite, x, 0, color);
+					putPixel(sprite, x, sprite->h - 1, color);
+				}
+				for ( int y = 0; y < sprite->h; y++ )
+				{
+					Uint32 color = SDL_MapRGBA(mainsurface->format, 0, 192, 255, 255);
+					putPixel(sprite, 0, y, color);
+					putPixel(sprite, sprite->w - 1, y, color);
+				}
+			}
+			else
+			{
+				sprite = SDL_CreateRGBSurface(0, 320, 32, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+				SDL_FillRect(sprite, nullptr, SDL_MapRGBA(mainsurface->format, 0, 0, 0, 0));
+				SDL_LockSurface(sprite);
+			}
+			SDL_UnlockSurface(sprite);
+
+			node_t* node = list_Node(&items[item->type].surfaces, item->appearance % items[item->type].variations);
+			if ( !node )
+			{
+				return;
+			}
+			SDL_Rect pos;
+			pos.w = 48;
+			pos.h = 48;
+			pos.x = tooltip.w - pos.w - 8;
+			pos.y = TTF12_HEIGHT;
+			SDL_Surface** itemSurf = static_cast<SDL_Surface**>(node->element);
+			SDL_BlitScaled(*itemSurf, nullptr, sprite, &pos);
+
+			GLuint itemTexid = 0;
+			SDL_Surface* textSurf = glTextSurface(item->description(), &itemTexid);
+			if ( textSurf )
+			{
+				pos.x = 4;
+				pos.y = 0;
+				SDL_BlitSurface(textSurf, nullptr, sprite, &pos);
+			}
+			char buf[256] = "";
+			if ( !item->identified )
+			{
+				textSurf = glTextSurface(language[309], &itemTexid);
+				if ( textSurf )
+				{
+					pos.y += TTF12_HEIGHT;
+					SDL_BlitSurface(textSurf, nullptr, sprite, &pos);
+				}
+			}
+			else
+			{
+				if ( item->beatitude < 0 )
+				{
+					textSurf = glTextSurface(language[310], &itemTexid);
+				}
+				else if ( item->beatitude > 0 )
+				{
+					textSurf = glTextSurface(language[312], &itemTexid);
+				}
+				else
+				{
+					textSurf = glTextSurface(language[311], &itemTexid);
+				}
+				if ( textSurf )
+				{
+					pos.y += TTF12_HEIGHT;
+					SDL_BlitSurface(textSurf, nullptr, sprite, &pos);
+				}
+			}
+
+			snprintf(buf, 255, language[313], items[item->type].weight);
+			textSurf = glTextSurface(buf, &itemTexid);
+			if ( textSurf )
+			{
+				pos.y += TTF12_HEIGHT;
+				SDL_BlitSurface(textSurf, nullptr, sprite, &pos);
+			}
+			snprintf(buf, 255, language[314], item->sellValue(player));
+			textSurf = glTextSurface(buf, &itemTexid);
+			if ( textSurf )
+			{
+				pos.y += TTF12_HEIGHT;
+				SDL_BlitSurface(textSurf, nullptr, sprite, &pos);
+			}
+			free(item);
+			item = nullptr;
+		}
+		if ( static_cast<Sint32>(entity->getUID()) == -21 )
+		{
+			GLuint tmpTextid = 0;
+			SDL_Rect pos;
+			pos.x = 0;
+			pos.y = 0;
+			pos.w = 64;
+			pos.h = 64;
+			if ( parent->behavior == &actItem )
+			{
+				//SDL_Surface* textSurf = glTextSurface("Press use to pick up!", &tmpTextid);
+				//if ( textSurf )
+				//{
+				//	pos.x = 32 + 16;
+				//	pos.y += 32;
+				//	if ( multiplayer == CLIENT && parent->itemReceivedDetailsFromServer == 0 )
+				//	{
+				//		// no details yet.
+				//		pos.y -= 24;
+				//	}
+				//	SDL_BlitSurface(textSurf, nullptr, sprite, &pos);
+				//}
+			}
+			/*else
+			{
+				SDL_Surface* textSurf = glTextSurface("Press use to interact!", &tmpTextid);
+				if ( textSurf )
+				{
+					pos.x = 32 + 16;
+					pos.y += 8;
+					SDL_BlitSurface(textSurf, nullptr, sprite, &pos);
+					SDL_BlitSurface(selected_glyph_bmp, nullptr, sprite, &pos);
+				}
+			}*/
+		}
+		//
+		tex = new TempTexture();
+		tex->load(sprite, false, true);
+		if ( mode == REALCOLORS )
+		{
+			tex->bind();
+		}
+		else
+		{
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		//glBindTexture(GL_TEXTURE_2D, texid[sprite->refcount]);
+	}
+	else
+	{
+		if ( entity->sprite >= 0 && entity->sprite < numsprites )
+		{
+			if ( sprites[entity->sprite] != NULL )
+			{
+				sprite = sprites[entity->sprite];
+			}
+			else
+			{
+				sprite = sprites[0];
+			}
+		}
+		else
+		{
+			sprite = sprites[0];
+		}
+	}
+
+	// translate sprite and rotate towards camera
+	//double tangent = atan2( entity->y-camera->y*16, camera->x*16-entity->x ) * (180/PI);
+	glTranslatef(entity->x * 2, -entity->z * 2 - 1, entity->y * 2);
+	if ( !entity->flags[OVERDRAW] || entity->flags[OVERDRAW] )
+	{
+		real_t tangent = 180 - camera->ang * (180 / PI);
+		glRotatef(tangent, 0, 1, 0);
+	}
+	else
+	{
+		real_t tangent = 180;
+		glRotatef(tangent, 0, 1, 0);
+	}
+	glScalef(entity->scalex, entity->scalez, entity->scaley);
+
+	if ( entity->flags[OVERDRAW] )
+	{
+		glDepthRange(0.1, 0.2);
+	}
+
+	// get shade factor
+	if ( mode == REALCOLORS )
+	{
+		if ( !entity->flags[BRIGHT] )
+		{
+			if ( !entity->flags[OVERDRAW] )
+			{
+				s = getLightForEntity(entity->x / 16, entity->y / 16);
+			}
+			else
+			{
+				s = getLightForEntity(camera->x, camera->y);
+			}
+
+			if ( globalLightModifierActive )
+			{
+				s *= globalLightModifier;
+			}
+
+			glColor4f(s, s, s, 1);
+		}
+		else
+		{
+			if ( entity->behavior == &actSpriteWorldTooltip )
+			{
+				glColor4f(1.f, 1.f, 1.f, entity->worldTooltipAlpha);
+			}
+			else if ( globalLightModifierActive )
+			{
+				glColor4f(globalLightModifier, globalLightModifier, globalLightModifier, 1);
+			}
+			else
+			{
+				glColor4f(1.f, 1.f, 1.f, 1);
+			}
+		}
+	}
+	else
+	{
+		Uint32 uid = entity->getUID();
+		glColor4ub((Uint8)(uid), (Uint8)(uid >> 8), (Uint8)(uid >> 16), (Uint8)(uid >> 24));
+	}
+
+	// draw quad
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 0);
+	glVertex3f(0, sprite->h / 2, sprite->w / 2);
+	glTexCoord2f(0, 1);
+	glVertex3f(0, -sprite->h / 2, sprite->w / 2);
+	glTexCoord2f(1, 1);
+	glVertex3f(0, -sprite->h / 2, -sprite->w / 2);
+	glTexCoord2f(1, 0);
+	glVertex3f(0, sprite->h / 2, -sprite->w / 2);
+	glEnd();
+	glDepthRange(0, 1);
+	glPopMatrix();
+
+	if ( entity->behavior == &actSpriteWorldTooltip )
+	{
+		if ( tex ) {
+			delete tex;
+			tex = nullptr;
+		}
+		if ( sprite ) {
+			SDL_FreeSurface(sprite);
+			sprite = nullptr;
+		}
+	}
+}
 
 void glDrawSprite(view_t* camera, Entity* entity, int mode)
 {
@@ -451,7 +912,7 @@ void glDrawSprite(view_t* camera, Entity* entity, int mode)
 	glMatrixMode( GL_PROJECTION );
 	glLoadIdentity();
 	glViewport(camera->winx, yres - camera->winh - camera->winy, camera->winw, camera->winh);
-	gluPerspective(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 2);
+	perspectiveGL(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 2);
 	glEnable( GL_DEPTH_TEST );
 	if (!entity->flags[OVERDRAW])
 	{
@@ -498,6 +959,7 @@ void glDrawSprite(view_t* camera, Entity* entity, int mode)
 	{
 		sprite = sprites[0];
 	}
+
 	if ( mode == REALCOLORS )
 	{
 		glBindTexture(GL_TEXTURE_2D, texid[sprite->refcount]);
@@ -625,6 +1087,7 @@ void glDrawSpriteFromImage(view_t* camera, Entity* entity, std::string text, int
 		pos.w = 0;
 
 		SDL_BlitSurface(textSurf, NULL, image, &pos);
+		SDL_FreeSurface(textSurf);
 		// load the text outline surface as a GL texture
 		allsurfaces[imgref] = image;
 		allsurfaces[imgref]->refcount = imgref;
@@ -641,7 +1104,7 @@ void glDrawSpriteFromImage(view_t* camera, Entity* entity, std::string text, int
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	glViewport(camera->winx, yres - camera->winh - camera->winy, camera->winw, camera->winh);
-	gluPerspective(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 2);
+	perspectiveGL(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 2);
 	glEnable(GL_DEPTH_TEST);
 	if ( !entity->flags[OVERDRAW] )
 	{
@@ -849,7 +1312,7 @@ void glDrawWorld(view_t* camera, int mode)
 		glMatrixMode( GL_PROJECTION );
 		glLoadIdentity();
 		glViewport(camera->winx, yres - camera->winh - camera->winy, camera->winw, camera->winh);
-		gluPerspective(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 16);
+		perspectiveGL(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 16);
 		GLfloat rotx = camera->vang * 180 / PI; // get x rotation
 		GLfloat roty = (camera->ang - 3 * PI / 2) * 180 / PI; // get y rotation
 		GLfloat rotz = 0; // get z rotation
@@ -901,7 +1364,7 @@ void glDrawWorld(view_t* camera, int mode)
 	glMatrixMode( GL_PROJECTION );
 	glLoadIdentity();
 	glViewport(camera->winx, yres - camera->winh - camera->winy, camera->winw, camera->winh);
-	gluPerspective(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 2);
+	perspectiveGL(fov, (real_t)camera->winw / (real_t)camera->winh, CLIPNEAR, CLIPFAR * 2);
 	GLfloat rotx = camera->vang * 180 / PI; // get x rotation
 	GLfloat roty = (camera->ang - 3 * PI / 2) * 180 / PI; // get y rotation
 	GLfloat rotz = 0; // get z rotation
@@ -1406,45 +1869,6 @@ void glDrawWorld(view_t* camera, int mode)
 	glDisable(GL_SCISSOR_TEST);
 	glScissor(0, 0, xres, yres);
 }
-
-/*GLuint create_shader(const char* filename, GLenum type)
-{
-	FILE* input = fopen(filename, "rb");
-	if( !input ) {
-		printlog("Couldn't open shader file \"%s\"", filename);
-		return 0;
-		//TODO: Error.
-	}
-	fclose(input);
-	const GLchar* source=NULL;
-	if (source == NULL) {
-		printlog("Error opening %s: ", filename); perror("");
-		return 0;
-	}
-	GLuint res = glCreateShader(type);
-	const GLchar* sources[2] = {
-#ifdef GL_ES_VERSION_2_0
-	"#version 100\n"
-	"#define GLES2\n",
-#else
-	"#version 120\n",
-#endif
-	source };
-	glShaderSource(res, 2, sources, NULL);
-	free((void*)source);
-
-	glCompileShader(res);
-	GLint compile_ok = GL_FALSE;
-	glGetShaderiv(res, GL_COMPILE_STATUS, &compile_ok);
-	if (compile_ok == GL_FALSE) {
-		printlog("%s:", filename);
-		glDeleteShader(res);
-		return 0;
-	}
-
-	return res;
-}
-*/
 
 static int dirty = 1;
 static int oldx = 0, oldy = 0;

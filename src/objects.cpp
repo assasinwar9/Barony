@@ -91,6 +91,26 @@ void entityDeconstructor(void* data)
 
 /*-------------------------------------------------------------------------------
 
+statDeconstructor
+
+Frees the memory occupied by a node pointing to stat
+
+-------------------------------------------------------------------------------*/
+
+void statDeconstructor(void* data)
+{
+	Stat* stat;
+
+	if ( data != nullptr )
+	{
+		stat = (Stat*)data;
+		//free(data);
+		delete stat;
+	}
+}
+
+/*-------------------------------------------------------------------------------
+
 	lightDeconstructor
 
 	Frees the memory occupied by a node pointing to a light
@@ -153,6 +173,11 @@ void mapDeconstructor(void* data)
 			list_FreeAll(map->entities);
 			free(map->entities);
 		}
+		if ( map->worldUI )
+		{
+			list_FreeAll(map->worldUI);
+			delete map->worldUI;
+		}
 		free(data);
 	}
 }
@@ -194,6 +219,7 @@ Entity* newEntity(Sint32 sprite, Uint32 pos, list_t* entlist, list_t* creatureli
 		printlog( "failed to allocate memory for new entity!\n" );
 		exit(1);
 	}*/
+#ifndef NINTENDO
 	bool failedToAllocate = false;
 	try
 	{
@@ -209,6 +235,9 @@ Entity* newEntity(Sint32 sprite, Uint32 pos, list_t* entlist, list_t* creatureli
 		printlog("failed to allocate memory for new entity!\n");
 		exit(1);
 	}
+#else
+	entity = new Entity(sprite, pos, entlist, creaturelist);
+#endif
 
 	return entity;
 }

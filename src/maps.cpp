@@ -384,7 +384,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 		}
 		if ( std::get<LEVELPARAM_DISABLE_NORMAL_EXIT>(mapParameters) != 0 )
 		{
-			snprintf(tmpBuffer, 31, ", disabled normal exit", std::get<LEVELPARAM_DISABLE_NORMAL_EXIT>(mapParameters));
+			snprintf(tmpBuffer, 31, ", disabled normal exit %d%%%%", std::get<LEVELPARAM_DISABLE_NORMAL_EXIT>(mapParameters));
 			strcat(generationLog, tmpBuffer);
 		}
 		strcat(generationLog, ", (seed %d)...\n");
@@ -451,7 +451,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 		// function sets dark level for us.
 		if ( darkmap )
 		{
-			messagePlayer(clientnum, language[1108]);
+			messageLocalPlayers(language[1108]);
 		}
 	}
 	else if ( !secretlevel )
@@ -461,7 +461,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 			if ( prng_get_uint() % 100 < std::get<LEVELPARAM_CHANCE_DARKNESS>(mapParameters) )
 			{
 				darkmap = true;
-				messagePlayer(clientnum, language[1108]);
+				messageLocalPlayers(language[1108]);
 			}
 			else
 			{
@@ -473,7 +473,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 			if ( prng_get_uint() % 4 == 0 )
 			{
 				darkmap = true;
-				messagePlayer(clientnum, language[1108]);
+				messageLocalPlayers(language[1108]);
 			}
 		}
 	}
@@ -563,6 +563,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 			shopmap.creatures = new list_t;
 			shopmap.creatures->first = nullptr;
 			shopmap.creatures->last = nullptr;
+			shopmap.worldUI = nullptr;
 			if ( fullMapPath.empty() || loadMap(fullMapPath.c_str(), &shopmap, shopmap.entities, shopmap.creatures, &checkMapHash) == -1 )
 			{
 				list_FreeAll(shopmap.entities);
@@ -610,6 +611,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 		tempMap->creatures = new list_t;
 		tempMap->creatures->first = nullptr;
 		tempMap->creatures->last = nullptr;
+		tempMap->worldUI = nullptr;
 		if ( fullMapPath.empty() || loadMap(fullMapPath.c_str(), tempMap, tempMap->entities, tempMap->creatures, &checkMapHash) == -1 )
 		{
 			mapDeconstructor((void*)tempMap);
@@ -713,6 +715,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 			subRoomMap->creatures = new list_t;
 			subRoomMap->creatures->first = nullptr;
 			subRoomMap->creatures->last = nullptr;
+			subRoomMap->worldUI = nullptr;
 			if ( fullMapPath.empty() || loadMap(fullMapPath.c_str(), subRoomMap, subRoomMap->entities, subRoomMap->creatures, &checkMapHash) == -1 )
 			{
 				mapDeconstructor((void*)subRoomMap);
@@ -794,7 +797,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 					possiblelocations[x + y * map.width] = true;
 				}
 				trapexcludelocations[x + y * map.width] = false;
-				if ( map.flags[MAP_FLAG_DISABLEMONSTERS] == true )
+				if ( map.flags[MAP_FLAG_DISABLEMONSTERS] == 1 )
 				{
 					// the base map excludes all monsters
 					monsterexcludelocations[x + y * map.width] = true;
@@ -803,7 +806,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 				{
 					monsterexcludelocations[x + y * map.width] = false;
 				}
-				if ( map.flags[MAP_FLAG_DISABLELOOT] == true )
+				if ( map.flags[MAP_FLAG_DISABLELOOT] == 1 )
 				{
 					// the base map excludes all monsters
 					lootexcludelocations[x + y * map.width] = true;
@@ -852,6 +855,7 @@ int generateDungeon(char* levelset, Uint32 seed, std::tuple<int, int, int, int> 
 				secretlevelmap.creatures = new list_t;
 				secretlevelmap.creatures->first = nullptr;
 				secretlevelmap.creatures->last = nullptr;
+				secretlevelmap.worldUI = nullptr;
 				char secretmapname[128];
 				switch ( secretlevelexit )
 				{
@@ -2589,6 +2593,10 @@ void assignActions(map_t* map)
 	{
 		entity = (Entity*)node->element;
 		nextnode = node->next;
+		if ( !entity )
+		{
+			continue;
+		}
 		switch ( entity->sprite )
 		{
 			// null:
@@ -3417,7 +3425,7 @@ void assignActions(map_t* map)
 						}
 						node2 = list_AddNodeLast(&entity->children);
 						node2->element = myStats;
-						//					node2->deconstructor = &myStats->~Stat;
+						node2->deconstructor = &statDeconstructor;
 						node2->size = sizeof(myStats);
 					}
 					else if ( entity->sprite == 10 )
@@ -3845,7 +3853,7 @@ void assignActions(map_t* map)
 				entity->sizey = 1;
 				entity->x += 8;
 				entity->y += 8;
-				entity->z = 7;
+				entity->z = 7.5;
 				entity->sprite = 184; // this is the switch base.
 				entity->flags[PASSABLE] = true;
 				childEntity = newEntity(186, 0, map->entities, nullptr); //Switch entity.
@@ -3853,7 +3861,7 @@ void assignActions(map_t* map)
 				childEntity->y = entity->y;
 				TileEntityList.addEntity(*childEntity);
 				//printlog("22 Generated entity. Sprite: %d Uid: %d X: %.2f Y: %.2f\n",childEntity->sprite,childEntity->getUID(),childEntity->x,childEntity->y);
-				childEntity->z = 8;
+				childEntity->z = 8.5;
 				childEntity->focalz = -4.5;
 				childEntity->sizex = 1;
 				childEntity->sizey = 1;
@@ -3979,7 +3987,7 @@ void assignActions(map_t* map)
 				entity->sizey = 2;
 				entity->x += 8;
 				entity->y += 8;
-				entity->z = 5.5;
+				entity->z = 6;
 				entity->yaw = entity->yaw * (PI / 2); //set to 0 by default in editor, can be set 0-3
 				entity->behavior = &actChest;
 				entity->sprite = 188;
@@ -5026,7 +5034,7 @@ void assignActions(map_t* map)
 				entity->sizey = 1;
 				entity->x += 8;
 				entity->y += 8;
-				entity->z = 7;
+				entity->z = 7.5;
 				entity->sprite = 585; // this is the switch base.
 				entity->flags[PASSABLE] = true;
 				childEntity = newEntity(586, 0, map->entities, nullptr);
@@ -5034,7 +5042,7 @@ void assignActions(map_t* map)
 				childEntity->y = entity->y;
 				TileEntityList.addEntity(*childEntity);
 				//printlog("22 Generated entity. Sprite: %d Uid: %d X: %.2f Y: %.2f\n",childEntity->sprite,childEntity->getUID(),childEntity->x,childEntity->y);
-				childEntity->z = 8;
+				childEntity->z = 8.5;
 				childEntity->leverTimerTicks = std::max(entity->leverTimerTicks, 1) * TICKS_PER_SECOND; // convert seconds to ticks from editor, make sure not less than 1
 				childEntity->leverStatus = 0; // set default to off.
 				childEntity->focalz = -4.5;
@@ -5044,6 +5052,7 @@ void assignActions(map_t* map)
 				childEntity->roll = -PI / 4; // "off" position
 				childEntity->flags[PASSABLE] = true;
 				childEntity->behavior = &actSwitchWithTimer;
+				entity->parent = childEntity->getUID();
 				break;
 			// pedestal
 			case 116:
@@ -5419,8 +5428,8 @@ void assignActions(map_t* map)
 				entity->x += 8;
 				entity->y += 8;
 				entity->sprite = entity->floorDecorationModel;
-				entity->sizex = 0.01;
-				entity->sizey = 0.01;
+				entity->sizex = 0;
+				entity->sizey = 0;
 				entity->z = 7.5 - entity->floorDecorationHeightOffset * 0.25;
 				entity->x += entity->floorDecorationXOffset * 0.25;
 				entity->y += entity->floorDecorationYOffset * 0.25;

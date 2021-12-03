@@ -186,7 +186,7 @@ int boulderCheckAgainstEntity(Entity* my, Entity* entity, bool ignoreInsideEntit
 				{
 					Uint32 color = SDL_MapRGB(mainsurface->format, 255, 0, 0);
 					messagePlayerColor(entity->skill[2], color, language[455]);
-					if ( entity->skill[2] == clientnum || splitscreen )
+					if ( players[entity->skill[2]]->isLocalPlayer() )
 					{
 						cameravars[entity->skill[2]].shakex += .1;
 						cameravars[entity->skill[2]].shakey += 10;
@@ -481,6 +481,11 @@ void actBoulder(Entity* my)
 		{
 			my->flags[BURNABLE] = true;
 		}
+		if ( !BOULDER_INIT )
+		{
+			BOULDER_INIT = 1;
+			my->createWorldUITooltip();
+		}
 		return;
 	}
 	my->skill[2] = -16; // invokes actBoulder() on clients
@@ -516,6 +521,7 @@ void actBoulder(Entity* my)
 		}
 		BOULDER_INIT = 1;
 		BOULDER_PLAYERPUSHED = -1;
+		my->createWorldUITooltip();
 	}
 
 	if ( BOULDER_LAVA_EXPLODE > 0 )
@@ -609,6 +615,10 @@ void actBoulder(Entity* my)
 		{
 			playSoundEntity(my, 182, 128);
 			my->vel_z = -(my->vel_z / 2);
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				inputs.rumble(i, GameController::Haptic_t::RUMBLE_BOULDER_BOUNCE, 32000, 32000, 15, my->getUID());
+			}
 			nobounce = true;
 		}
 		else
@@ -616,6 +626,10 @@ void actBoulder(Entity* my)
 			if ( my->vel_z )
 			{
 				playSoundEntity(my, 182, 128);
+				for ( int i = 0; i < MAXPLAYERS; ++i )
+				{
+					inputs.rumble(i, GameController::Haptic_t::RUMBLE_BOULDER_BOUNCE, 32000, 32000, 15, my->getUID());
+				}
 			}
 			my->vel_z = 0;
 			nobounce = false;
@@ -842,7 +856,7 @@ void actBoulder(Entity* my)
 			BOULDER_PLAYERPUSHED = -1;
 			for (i = 0; i < MAXPLAYERS; i++)
 			{
-				if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+				if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 				{
 					if (inrange[i])
 					{
@@ -859,7 +873,6 @@ void actBoulder(Entity* my)
 						{
 							if (players[i] && players[i]->entity)
 							{
-								//playSoundEntity(my, 151, 128);
 								BOULDER_SOUND_ON_PUSH = i + 1;
 								BOULDER_ROLLING = 1;
 								/*my->x = floor(my->x / 16) * 16 + 8;
@@ -1061,6 +1074,10 @@ void actBoulder(Entity* my)
 				if ( BOULDER_SOUND_ON_PUSH > 0 )
 				{
 					playSoundEntity(my, 151, 128);
+					for ( int i = 0; i < MAXPLAYERS; ++i )
+					{
+						inputs.rumble(i, GameController::Haptic_t::RUMBLE_BOULDER_ROLLING, 0, 8000, TICKS_PER_SECOND / 2, my->getUID());
+					}
 					BOULDER_SOUND_ON_PUSH = 0;
 				}
 			}
@@ -1101,6 +1118,10 @@ void actBoulder(Entity* my)
 		{
 			BOULDER_AMBIENCE = 0;
 			playSoundEntity(my, 151, 128);
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				inputs.rumble(i, GameController::Haptic_t::RUMBLE_BOULDER_ROLLING, 0, 16000, TICKS_PER_SECOND / 2, my->getUID());
+			}
 		}
 
 		if ( my->sprite == BOULDER_LAVA_SPRITE )
@@ -1261,6 +1282,7 @@ void actBoulderTrap(Entity* my)
 				playSoundEntity(my, 150, 128);
 				for ( c = 0; c < MAXPLAYERS; c++ )
 				{
+					inputs.rumble(c, GameController::Haptic_t::RUMBLE_BOULDER, 0, 32000, TICKS_PER_SECOND, my->getUID());
 					playSoundPlayer(c, 150, 64);
 				}
 			}

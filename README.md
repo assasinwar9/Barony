@@ -1,5 +1,20 @@
 ![Linux-CI_fmod_steam](https://github.com/TurningWheel/Barony/workflows/Linux-CI_fmod_steam/badge.svg) ![Linux-CI_fmod_steam_eos](https://github.com/TurningWheel/Barony/workflows/Linux-CI_fmod_steam_eos/badge.svg)
 
+# Update - 4th Feb 2021
+
+The current 'master' branch contains in-development features for our latest update. From here we're branching to 'develop' and continuing on work for splitscreen/gamepad/new UI.
+
+If you'd like to compile the code for your own modding or casual uses, we recommend forking from the current stable V3.3.7 build on Steam/Epic/GOG - check the Releases section on Github for the commit. 
+[https://github.com/TurningWheel/Barony/releases/tag/v3.3.7](https://github.com/TurningWheel/Barony/releases/tag/v3.3.7).
+
+For bugfixes + PRs, open them against 'master'. To build the code from 'master' you'll need some additional assets to get the game running, 'tmp-master-assets.zip' found at [https://github.com/TurningWheel/Barony/releases/tag/V3.3.7-dev](https://github.com/TurningWheel/Barony/releases/tag/V3.3.7-dev) and place them in the root Barony directory.
+
+# Compilation Instructions
+
+The compilation instructions can be found in [INSTALL.md](INSTALL.md)
+
+# Open-source Announcement Letter
+
 Well here it is, as promised: the open source release of Barony. Keep in mind you still need a purchased copy of Barony to play this. I'd recommend that you thumb through all of the included text files to get a feeling of other things you'll need to build the game and check out the included licenses as well.
 
 Many thanks go to Ciprian Elies for his original contributions to the game code, as well as for the build systems, config files, and support libraries that he developed for the project over the years. In the future, he plans to head up development on some new stuff for Barony, so keep an eye out for that.

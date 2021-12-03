@@ -454,44 +454,48 @@ void navigateMainMenuItems(bool mode)
 	if (menuselect == 0)
 	{
 		//No menu item selected.
-		if ( keystatus[SDL_SCANCODE_UP] || (*inputPressed(joyimpulses[INJOY_DPAD_UP]) && rebindaction == -1) )
+		if ( keystatus[SDL_SCANCODE_UP] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_UP) && rebindaction == -1) )
 		{
 			keystatus[SDL_SCANCODE_UP] = 0;
 			if ( rebindaction == -1 )
 			{
-				*inputPressed(joyimpulses[INJOY_DPAD_UP]) = 0;
+				inputs.controllerClearInput(clientnum, INJOY_DPAD_UP);
 			}
-			draw_cursor = false;
+			inputs.hideMouseCursors();
 			menuselect = menuOptions.at(0).second;
 			//Warp cursor to menu item, for gamepad convenience.
 			warpx = 50 + 18;
 			warpy = (yres / 4) + 80 + (18 / 2); //I am a wizard. I hate magic numbers.
-			SDL_WarpMouseInWindow(screen, warpx, warpy);
+			//SDL_WarpMouseInWindow(screen, warpx, warpy);
+			Uint32 flags = (Inputs::SET_MOUSE | Inputs::SET_CONTROLLER);
+			inputs.warpMouse(clientnum, warpx, warpy, flags);
 		}
-		else if ( keystatus[SDL_SCANCODE_DOWN] || (*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) && rebindaction == -1) )
+		else if ( keystatus[SDL_SCANCODE_DOWN] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_DOWN) && rebindaction == -1) )
 		{
 			keystatus[SDL_SCANCODE_DOWN] = 0;
 			if ( rebindaction == -1 )
 			{
-				*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) = 0;
+				inputs.controllerClearInput(clientnum, INJOY_DPAD_DOWN);
 			}
-			draw_cursor = false;
+			inputs.hideMouseCursors();
 			menuselect = menuOptions.at(0).second;
 			warpx = 50 + 18;
 			warpy = (yres / 4) + 80 + (18 / 2);
-			SDL_WarpMouseInWindow(screen, warpx, warpy);
+			//SDL_WarpMouseInWindow(screen, warpx, warpy);
+			Uint32 flags = (Inputs::SET_MOUSE | Inputs::SET_CONTROLLER);
+			inputs.warpMouse(clientnum, warpx, warpy, flags);
 		}
 	}
 	else
 	{
-		if ( keystatus[SDL_SCANCODE_UP] || (*inputPressed(joyimpulses[INJOY_DPAD_UP]) && rebindaction == -1) )
+		if ( keystatus[SDL_SCANCODE_UP] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_UP) && rebindaction == -1) )
 		{
 			keystatus[SDL_SCANCODE_UP] = 0;
 			if ( rebindaction == -1 )
 			{
-				*inputPressed(joyimpulses[INJOY_DPAD_UP]) = 0;
+				inputs.controllerClearInput(clientnum, INJOY_DPAD_UP);
 			}
-			draw_cursor = false;
+			inputs.hideMouseCursors();
 			if ( mode )
 			{
 				getPrevMenuOption(menuselect);
@@ -507,16 +511,18 @@ void navigateMainMenuItems(bool mode)
 
 			warpx = 50 + 18;
 			warpy = (((yres / 4) + 80 + (18 / 2)) + ((menuselect - 1) * 24));
-			SDL_WarpMouseInWindow(screen, warpx, warpy);
+			//SDL_WarpMouseInWindow(screen, warpx, warpy);
+			Uint32 flags = (Inputs::SET_MOUSE | Inputs::SET_CONTROLLER);
+			inputs.warpMouse(clientnum, warpx, warpy, flags);
 		}
-		else if (keystatus[SDL_SCANCODE_DOWN] || (*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) && rebindaction == -1) )
+		else if (keystatus[SDL_SCANCODE_DOWN] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_DOWN) && rebindaction == -1) )
 		{
 			keystatus[SDL_SCANCODE_DOWN] = 0;
 			if ( rebindaction == -1 )
 			{
-				*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) = 0;
+				inputs.controllerClearInput(clientnum, INJOY_DPAD_DOWN);
 			}
-			draw_cursor = false;
+			inputs.hideMouseCursors();
 			if ( mode )
 			{
 				getNextMenuOption(menuselect);
@@ -531,21 +537,25 @@ void navigateMainMenuItems(bool mode)
 			}
 			warpx = 50 + 18;
 			warpy = (((yres / 4) + 80 + (18 / 2)) + ((menuselect - 1) * 24));
-			SDL_WarpMouseInWindow(screen, warpx, warpy);
+			//SDL_WarpMouseInWindow(screen, warpx, warpy);
+			Uint32 flags = (Inputs::SET_MOUSE | Inputs::SET_CONTROLLER);
+			inputs.warpMouse(clientnum, warpx, warpy, flags);
 		}
 	}
 }
 
 void inline printJoybindingNames(const SDL_Rect& currentPos, int c, bool &rebindingaction)
 {
+	Sint32 omousex = inputs.getMouse(clientnum, Inputs::MouseInputs::OX);
+	Sint32 omousey = inputs.getMouse(clientnum, Inputs::MouseInputs::OY);
 	ttfPrintText(ttf8, currentPos.x, currentPos.y, language[1948 + c]);
-	if ( mousestatus[SDL_BUTTON_LEFT] && !rebindingaction )
+	if ( inputs.bMouseLeft(clientnum) && !rebindingaction )
 	{
 		if ( omousex >= currentPos.x && omousex < subx2 - 24 )
 		{
 			if ( omousey >= currentPos.y && omousey < currentPos.y + 12 )
 			{
-				mousestatus[SDL_BUTTON_LEFT] = 0;
+				inputs.mouseClearLeft(clientnum);
 				if ( settings_joyimpulses[c] != UNBOUND_JOYBINDING )
 				{
 					settings_joyimpulses[c] = UNBOUND_JOYBINDING; //Unbind the joybinding if clicked on.
@@ -795,19 +805,24 @@ int isCharacterValidFromDLC(Stat& myStats, int characterClass)
 
 void inline pauseMenuOnInputPressed()
 {
-	mousestatus[SDL_BUTTON_LEFT] = 0;
+	inputs.mouseClearLeft(clientnum);
 	keystatus[SDL_SCANCODE_RETURN] = 0;
 	playSound(139, 64);
 	if ( rebindaction == -1 )
 	{
-		*inputPressed(joyimpulses[INJOY_MENU_NEXT]) = 0;
+		inputs.controllerClearInput(clientnum, INJOY_MENU_NEXT);
 	}
 }
 
 void handleInGamePauseMenu()
 {
 	Uint32 colorGray = uint32ColorGray(*mainsurface);
-	const bool inputIsPressed = (mousestatus[SDL_BUTTON_LEFT] || keystatus[SDL_SCANCODE_RETURN] || (*inputPressed(joyimpulses[INJOY_MENU_NEXT]) && rebindaction == -1));
+
+	Sint32 mousex = inputs.getMouse(clientnum, Inputs::MouseInputs::X);
+	Sint32 mousey = inputs.getMouse(clientnum, Inputs::MouseInputs::Y);
+	Sint32 omousex = inputs.getMouse(clientnum, Inputs::MouseInputs::OX);
+	Sint32 omousey = inputs.getMouse(clientnum, Inputs::MouseInputs::OY);
+	const bool inputIsPressed = (inputs.bMouseLeft(clientnum) || keystatus[SDL_SCANCODE_RETURN] || (inputs.bControllerInputPressed(clientnum, INJOY_MENU_NEXT) && rebindaction == -1));
 	SDL_Rect text;
 	text.x = 50;
 	text.h = 18;
@@ -1241,8 +1256,13 @@ void handleInGamePauseMenu()
 
 void handleTutorialPauseMenu()
 {
+	Sint32 mousex = inputs.getMouse(clientnum, Inputs::MouseInputs::X);
+	Sint32 mousey = inputs.getMouse(clientnum, Inputs::MouseInputs::Y);
+	Sint32 omousex = inputs.getMouse(clientnum, Inputs::MouseInputs::OX);
+	Sint32 omousey = inputs.getMouse(clientnum, Inputs::MouseInputs::OY);
+
 	const Uint32 colorGray = uint32ColorGray(*mainsurface);
-	const bool inputIsPressed = (mousestatus[SDL_BUTTON_LEFT] || keystatus[SDL_SCANCODE_RETURN] || (*inputPressed(joyimpulses[INJOY_MENU_NEXT]) && rebindaction == -1));
+	const bool inputIsPressed = (inputs.bMouseLeft(clientnum) || keystatus[SDL_SCANCODE_RETURN] || (inputs.bControllerInputPressed(clientnum, INJOY_MENU_NEXT) && rebindaction == -1));
 	SDL_Rect text;
 	text.x = 50;
 	text.h = 18;
@@ -1559,9 +1579,12 @@ void handleMainMenu(bool mode)
 	//Mix_Music **music, *intromusic, *splashmusic, *creditsmusic;
 	node_t* node, *nextnode;
 	Entity* entity;
-	FILE* fp;
 	//SDL_Surface *sky_bmp;
 	button_t* button;
+	Sint32 mousex = inputs.getMouse(clientnum, Inputs::MouseInputs::X);
+	Sint32 mousey = inputs.getMouse(clientnum, Inputs::MouseInputs::Y);
+	Sint32 omousex = inputs.getMouse(clientnum, Inputs::MouseInputs::OX);
+	Sint32 omousey = inputs.getMouse(clientnum, Inputs::MouseInputs::OY);
 
 #ifdef STEAMWORKS
 	if ( SteamApps()->BIsDlcInstalled(1010820) )
@@ -1711,10 +1734,10 @@ void handleMainMenu(bool mode)
 				strncat(version, __DATE__ + 5, 1);
 			}
 			int w, h;
-			TTF_SizeUTF8(ttf8, version, &w, &h);
+			getSizeOfText(ttf8, version, &w, &h);
 			ttfPrintTextFormatted(ttf8, xres - 8 - w, yres - 4 - h, "%s", version);
 			int h2 = h;
-			TTF_SizeUTF8(ttf8, VERSION, &w, &h);
+			getSizeOfText(ttf8, VERSION, &w, &h);
 			ttfPrintTextFormatted(ttf8, xres - 8 - w, yres - 8 - h - h2, VERSION);
 			if ( gamemods_numCurrentModsLoaded >= 0 || conductGameChallenges[CONDUCT_MODDED] )
 			{
@@ -1733,7 +1756,7 @@ void handleMainMenu(bool mode)
 					(conductGameChallenges[CONDUCT_CHEATS_ENABLED]
 					|| conductGameChallenges[CONDUCT_LIFESAVING])) )
 			{
-				TTF_SizeUTF8(ttf8, language[3003], &w, &h);
+				getSizeOfText(ttf8, language[3003], &w, &h);
 				if ( gamemods_numCurrentModsLoaded < 0 && !conductGameChallenges[CONDUCT_MODDED] )
 				{
 					h = -4;
@@ -1752,15 +1775,15 @@ void handleMainMenu(bool mode)
 #endif
 
 #ifdef STEAMWORKS
-			TTF_SizeUTF8(ttf8, language[2549], &w, &h);
+			getSizeOfText(ttf8, language[2549], &w, &h);
 			if ( (omousex >= xres - 8 - w && omousex < xres && omousey >= 8 && omousey < 8 + h)
 				&& subwindow == 0
 				&& introstage == 1
 				&& SteamUser()->BLoggedOn() )
 			{
-				if ( mousestatus[SDL_BUTTON_LEFT] )
+				if ( inputs.bMouseLeft(clientnum) )
 				{
-					mousestatus[SDL_BUTTON_LEFT] = 0;
+					inputs.mouseClearLeft(clientnum);
 					playSound(139, 64);
 					SteamAPICall_NumPlayersOnline = SteamUserStats()->GetNumberOfCurrentPlayers();
 				}
@@ -1774,7 +1797,7 @@ void handleMainMenu(bool mode)
 			{
 				if ( conductGameChallenges[CONDUCT_CHEATS_ENABLED] )
 				{
-					TTF_SizeUTF8(ttf8, language[2986], &w, &h);
+					getSizeOfText(ttf8, language[2986], &w, &h);
 					ttfPrintTextFormatted(ttf8, xres - 8 - w, 8 + h, language[2986]);
 				}
 			}
@@ -1796,13 +1819,13 @@ void handleMainMenu(bool mode)
 #else
 			if ( intro && introstage == 1 )
 			{
-				TTF_SizeUTF8(ttf8, language[3402], &w, &h);
+				getSizeOfText(ttf8, language[3402], &w, &h);
 				if ( (omousex >= xres - 8 - w && omousex < xres && omousey >= 8 && omousey < 8 + h)
 					&& subwindow == 0 )
 				{
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						playSound(139, 64);
 						windowEnterSerialPrompt();
 						
@@ -1866,7 +1889,7 @@ void handleMainMenu(bool mode)
 				buttonJoinLobby(nullptr);
 			}
 
-			bool mainMenuSelectInputIsPressed = (mousestatus[SDL_BUTTON_LEFT] || keystatus[SDL_SCANCODE_RETURN] || (*inputPressed(joyimpulses[INJOY_MENU_NEXT]) && rebindaction == -1));
+			bool mainMenuSelectInputIsPressed = (inputs.bMouseLeft(clientnum) || keystatus[SDL_SCANCODE_RETURN] || (inputs.bControllerInputPressed(clientnum, INJOY_MENU_NEXT) && rebindaction == -1));
 
 			//"Start Game" button.
 			SDL_Rect text;
@@ -1912,7 +1935,7 @@ void handleMainMenu(bool mode)
 						// print a loading message
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[2990], &w, &h);
+						getSizeOfText(ttf16, language[2990], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[2990]);
 						GO_SwapBuffers(screen);
 
@@ -1925,7 +1948,7 @@ void handleMainMenu(bool mode)
 						// print a loading message
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[2988], &w, &h);
+						getSizeOfText(ttf16, language[2988], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[2988]);
 						GO_SwapBuffers(screen);
 						physfsReloadSounds(true);
@@ -1936,7 +1959,7 @@ void handleMainMenu(bool mode)
 					{
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[3018], &w, &h);
+						getSizeOfText(ttf16, language[3018], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3018]);
 						GO_SwapBuffers(screen);
 						physfsReloadTiles(true);
@@ -1947,7 +1970,7 @@ void handleMainMenu(bool mode)
 					{
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[2992], &w, &h);
+						getSizeOfText(ttf16, language[2992], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[2992]);
 						GO_SwapBuffers(screen);
 						physfsReloadBooks();
@@ -1959,7 +1982,7 @@ void handleMainMenu(bool mode)
 						gamemodsUnloadCustomThemeMusic();
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[2994], &w, &h);
+						getSizeOfText(ttf16, language[2994], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[2994]);
 						GO_SwapBuffers(screen);
 						bool reloadIntroMusic = false;
@@ -1977,7 +2000,7 @@ void handleMainMenu(bool mode)
 					{
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[3005], &w, &h);
+						getSizeOfText(ttf16, language[3005], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3005]);
 						GO_SwapBuffers(screen);
 						reloadLanguage();
@@ -1988,7 +2011,7 @@ void handleMainMenu(bool mode)
 					{
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[3009], &w, &h);
+						getSizeOfText(ttf16, language[3009], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3009]);
 						GO_SwapBuffers(screen);
 						physfsReloadItemsTxt();
@@ -1999,7 +2022,7 @@ void handleMainMenu(bool mode)
 					{
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[3007], &w, &h);
+						getSizeOfText(ttf16, language[3007], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3007]);
 						GO_SwapBuffers(screen);
 						physfsReloadItemSprites(true);
@@ -2010,7 +2033,7 @@ void handleMainMenu(bool mode)
 					{
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[3016], &w, &h);
+						getSizeOfText(ttf16, language[3016], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3016]);
 						GO_SwapBuffers(screen);
 						physfsReloadSprites(true);
@@ -2028,7 +2051,7 @@ void handleMainMenu(bool mode)
 					{
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[3014], &w, &h);
+						getSizeOfText(ttf16, language[3014], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3014]);
 						GO_SwapBuffers(screen);
 						physfsReloadMonsterLimbFiles();
@@ -2039,7 +2062,7 @@ void handleMainMenu(bool mode)
 					{
 						drawClearBuffers();
 						int w, h;
-						TTF_SizeUTF8(ttf16, language[3016], &w, &h);
+						getSizeOfText(ttf16, language[3016], &w, &h);
 						ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3016]);
 						GO_SwapBuffers(screen);
 						physfsReloadSystemImages();
@@ -2490,9 +2513,9 @@ void handleMainMenu(bool mode)
 			rotateBtn.x = camera_charsheet.winx + camera_charsheet.winw - rotateBtn.w;
 			rotateBtn.y = camera_charsheet.winy + camera_charsheet.winh - rotateBtn.h;
 			drawWindow(rotateBtn.x, rotateBtn.y, rotateBtn.x + rotateBtn.w, rotateBtn.y + rotateBtn.h);
-			if ( mouseInBounds(rotateBtn.x, rotateBtn.x + rotateBtn.w, rotateBtn.y, rotateBtn.y + rotateBtn.h) )
+			if ( mouseInBounds(clientnum, rotateBtn.x, rotateBtn.x + rotateBtn.w, rotateBtn.y, rotateBtn.y + rotateBtn.h) )
 			{
-				if ( mousestatus[SDL_BUTTON_LEFT] )
+				if ( inputs.bMouseLeft(clientnum) )
 				{
 					camera_charsheet_offsetyaw += 0.05;
 					if ( camera_charsheet_offsetyaw > 2 * PI )
@@ -2507,9 +2530,9 @@ void handleMainMenu(bool mode)
 			rotateBtn.x = camera_charsheet.winx + camera_charsheet.winw - rotateBtn.w * 2 - 4;
 			rotateBtn.y = camera_charsheet.winy + camera_charsheet.winh - rotateBtn.h;
 			drawWindow(rotateBtn.x, rotateBtn.y, rotateBtn.x + rotateBtn.w, rotateBtn.y + rotateBtn.h);
-			if ( mouseInBounds(rotateBtn.x, rotateBtn.x + rotateBtn.w, rotateBtn.y, rotateBtn.y + rotateBtn.h) )
+			if ( mouseInBounds(clientnum, rotateBtn.x, rotateBtn.x + rotateBtn.w, rotateBtn.y, rotateBtn.y + rotateBtn.h) )
 			{
-				if ( mousestatus[SDL_BUTTON_LEFT] )
+				if ( inputs.bMouseLeft(clientnum) )
 				{
 					camera_charsheet_offsetyaw -= 0.05;
 					if ( camera_charsheet_offsetyaw < 0.f )
@@ -2527,13 +2550,13 @@ void handleMainMenu(bool mode)
 			raceInfoBtn.x = rotateBtn.x - raceInfoBtn.w - 4;
 			raceInfoBtn.h = rotateBtn.h;
 			drawWindow(raceInfoBtn.x, raceInfoBtn.y, raceInfoBtn.x + raceInfoBtn.w, raceInfoBtn.y + raceInfoBtn.h);
-			if ( mouseInBounds(raceInfoBtn.x, raceInfoBtn.x + raceInfoBtn.w, raceInfoBtn.y, raceInfoBtn.y + raceInfoBtn.h) )
+			if ( mouseInBounds(clientnum, raceInfoBtn.x, raceInfoBtn.x + raceInfoBtn.w, raceInfoBtn.y, raceInfoBtn.y + raceInfoBtn.h) )
 			{
-				if ( *inputPressed(joyimpulses[INJOY_MENU_LEFT_CLICK]) || mousestatus[SDL_BUTTON_LEFT] )
+				if ( inputs.bControllerInputPressed(clientnum, INJOY_MENU_LEFT_CLICK) || inputs.bMouseLeft(clientnum) )
 				{
 					//drawDepressed(raceInfoBtn.x, raceInfoBtn.y, raceInfoBtn.x + raceInfoBtn.w, raceInfoBtn.y + raceInfoBtn.h);
-					mousestatus[SDL_BUTTON_LEFT] = 0;
-					*inputPressed(joyimpulses[INJOY_MENU_LEFT_CLICK]) = 0;
+					inputs.mouseClearLeft(clientnum);
+					inputs.controllerClearInput(clientnum, INJOY_MENU_LEFT_CLICK);
 					showRaceInfo = !showRaceInfo;
 					playSound(139, 64);
 				}
@@ -2783,10 +2806,10 @@ void handleMainMenu(bool mode)
 			{
 				if ( omousey >= suby1 + 56 && omousey < suby1 + 72 )
 				{
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
 						raceSelect = 0;
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						stats[0]->sex = MALE;
 						lastSex = MALE;
 						if ( stats[0]->playerRace == RACE_SUCCUBUS )
@@ -2813,10 +2836,10 @@ void handleMainMenu(bool mode)
 				}
 				else if ( omousey >= suby1 + 72 && omousey < suby1 + 90 )
 				{
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
 						raceSelect = 0;
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						stats[0]->sex = FEMALE;
 						lastSex = FEMALE;
 						if ( stats[0]->playerRace == RACE_INCUBUS )
@@ -2869,10 +2892,10 @@ void handleMainMenu(bool mode)
 									disableSelect = true;
 								}
 							}
-							if ( !disableSelect && mousestatus[SDL_BUTTON_LEFT] )
+							if ( !disableSelect && inputs.bMouseLeft(clientnum) )
 							{
 								raceSelect = 1;
-								mousestatus[SDL_BUTTON_LEFT] = 0;
+								inputs.mouseClearLeft(clientnum);
 								if ( !disableSelect )
 								{
 									PlayerRaces lastRace = static_cast<PlayerRaces>(stats[0]->playerRace);
@@ -2896,7 +2919,7 @@ void handleMainMenu(bool mode)
 									{
 										stats[0]->playerRace = c;
 									}
-									mousestatus[SDL_BUTTON_LEFT] = 0;
+									inputs.mouseClearLeft(clientnum);
 									if ( stats[0]->playerRace == RACE_INCUBUS )
 									{
 										stats[0]->sex = MALE;
@@ -2971,7 +2994,7 @@ void handleMainMenu(bool mode)
 #ifdef STEAMWORKS
 								if ( SteamUser()->BLoggedOn() )
 								{
-									if ( mousestatus[SDL_BUTTON_LEFT] )
+									if ( inputs.bMouseLeft(clientnum) )
 									{
 										if ( SteamUtils()->IsOverlayEnabled() )
 										{
@@ -2988,24 +3011,24 @@ void handleMainMenu(bool mode)
 												openURLTryWithOverlay(language[3992]);
 											}
 										}
-										mousestatus[SDL_BUTTON_LEFT] = 0;
+										inputs.mouseClearLeft(clientnum);
 									}
 								}
 #elif defined USE_EOS
 								if ( c > RACE_GOATMAN && c <= RACE_INSECTOID && !skipFirstDLC )
 								{
-									if ( mousestatus[SDL_BUTTON_LEFT] )
+									if ( inputs.bMouseLeft(clientnum) )
 									{
 										openURLTryWithOverlay(language[3985]);
-										mousestatus[SDL_BUTTON_LEFT] = 0;
+										inputs.mouseClearLeft(clientnum);
 									}
 								}
 								else
 								{
-									if ( mousestatus[SDL_BUTTON_LEFT] )
+									if ( inputs.bMouseLeft(clientnum) )
 									{
 										openURLTryWithOverlay(language[3984]);
-										mousestatus[SDL_BUTTON_LEFT] = 0;
+										inputs.mouseClearLeft(clientnum);
 									}
 								}
 #endif
@@ -3048,9 +3071,9 @@ void handleMainMenu(bool mode)
 				}
 				else if ( omousey >= pady + (NUMPLAYABLERACES * 17) + 48 && omousey < pady + (NUMPLAYABLERACES * 17) + 82 )
 				{
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						if ( stats[0]->playerRace > 0 )
 						{
 							if ( omousey < pady + (NUMPLAYABLERACES * 17) + 64 ) // first option
@@ -3076,19 +3099,19 @@ void handleMainMenu(bool mode)
 							stats[0]->clearStats();
 							initClass(0);
 							raceSelect = 2;
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 						}
 					}
 				}
 			}
-			if ( keystatus[SDL_SCANCODE_UP] || (*inputPressed(joyimpulses[INJOY_DPAD_UP]) && rebindaction == -1) )
+			if ( keystatus[SDL_SCANCODE_UP] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_UP) && rebindaction == -1) )
 			{
 				keystatus[SDL_SCANCODE_UP] = 0;
 				if ( rebindaction == -1 )
 				{
-					*inputPressed(joyimpulses[INJOY_DPAD_UP]) = 0;
+					inputs.controllerClearInput(clientnum, INJOY_DPAD_UP);
 				}
-				draw_cursor = false;
+				inputs.hideMouseCursors();
 				if ( raceSelect == 1 )
 				{
 					PlayerRaces lastRace = static_cast<PlayerRaces>(stats[0]->playerRace);
@@ -3205,14 +3228,14 @@ void handleMainMenu(bool mode)
 					initClass(0);
 				}
 			}
-			if ( keystatus[SDL_SCANCODE_DOWN] || (*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) && rebindaction == -1) )
+			if ( keystatus[SDL_SCANCODE_DOWN] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_DOWN) && rebindaction == -1) )
 			{
 				keystatus[SDL_SCANCODE_DOWN] = 0;
 				if ( rebindaction == -1 )
 				{
-					*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) = 0;
+					inputs.controllerClearInput(clientnum, INJOY_DPAD_DOWN);
 				}
-				draw_cursor = false;
+				inputs.hideMouseCursors();
 				if ( raceSelect == 1 )
 				{
 					PlayerRaces lastRace = static_cast<PlayerRaces>(stats[0]->playerRace);
@@ -3344,14 +3367,14 @@ void handleMainMenu(bool mode)
 					initClass(0);
 				}
 			}
-			if ( keystatus[SDL_SCANCODE_RIGHT] || (*inputPressed(joyimpulses[INJOY_DPAD_RIGHT]) && rebindaction == -1) )
+			if ( keystatus[SDL_SCANCODE_RIGHT] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_RIGHT) && rebindaction == -1) )
 			{
 				keystatus[SDL_SCANCODE_RIGHT] = 0;
 				if ( rebindaction == -1 )
 				{
-					*inputPressed(joyimpulses[INJOY_DPAD_RIGHT]) = 0;
+					inputs.controllerClearInput(clientnum, INJOY_DPAD_RIGHT);
 				}
-				draw_cursor = false;
+				inputs.hideMouseCursors();
 				++raceSelect;
 				if ( stats[0]->playerRace == RACE_HUMAN )
 				{
@@ -3365,14 +3388,14 @@ void handleMainMenu(bool mode)
 					raceSelect = 0;
 				}
 			}
-			if ( keystatus[SDL_SCANCODE_LEFT] || (*inputPressed(joyimpulses[INJOY_DPAD_LEFT]) && rebindaction == -1) )
+			if ( keystatus[SDL_SCANCODE_LEFT] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_LEFT) && rebindaction == -1) )
 			{
 				keystatus[SDL_SCANCODE_LEFT] = 0;
 				if ( rebindaction == -1 )
 				{
-					*inputPressed(joyimpulses[INJOY_DPAD_LEFT]) = 0;
+					inputs.controllerClearInput(clientnum, INJOY_DPAD_LEFT);
 				}
-				draw_cursor = false;
+				inputs.hideMouseCursors();
 				--raceSelect;
 				if ( stats[0]->playerRace == RACE_HUMAN )
 				{
@@ -3444,13 +3467,13 @@ void handleMainMenu(bool mode)
 					pady += 8;
 				}
 
-				if ( mousestatus[SDL_BUTTON_LEFT] )
+				if ( inputs.bMouseLeft(clientnum) )
 				{
 					if ( omousex >= subx1 + 40 && omousex < subx1 + 72 )
 					{
 						if ( omousey >= pady && omousey < pady + 16 )
 						{
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 							if ( isCharacterValidFromDLC(*stats[0], classToPick) == VALID_OK_CHARACTER )
 							{
 								int previousClassPicked = client_classes[0];
@@ -3485,7 +3508,7 @@ void handleMainMenu(bool mode)
 						drawImageScaled(sidebar_unlock_bmp, nullptr, &img);
 						ttfPrintTextFormattedColor(ttf16, subx1 + 32, pady, uint32ColorGray(*mainsurface), "[ ] %s", playerClassLangEntry(classToPick, 0));
 
-						if ( mouseInBounds(subx1 + 40, subx1 + 72, pady, pady + 16) )
+						if ( mouseInBounds(clientnum, subx1 + 40, subx1 + 72, pady, pady + 16) )
 						{
 #if (defined STEAMWORKS || defined USE_EOS)
 							tooltip.x = omousex + 16;
@@ -3506,14 +3529,14 @@ void handleMainMenu(bool mode)
 					}
 				}
 
-				if ( keystatus[SDL_SCANCODE_UP] || (*inputPressed(joyimpulses[INJOY_DPAD_UP]) && rebindaction == -1) )
+				if ( keystatus[SDL_SCANCODE_UP] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_UP) && rebindaction == -1) )
 				{
 					keystatus[SDL_SCANCODE_UP] = 0;
 					if ( rebindaction == -1 )
 					{
-						*inputPressed(joyimpulses[INJOY_DPAD_UP]) = 0;
+						inputs.controllerClearInput(clientnum, INJOY_DPAD_UP);
 					}
-					draw_cursor = false;
+					inputs.hideMouseCursors();
 
 					int previousClassPicked = client_classes[0];
 					if ( client_classes[0] == 0 )
@@ -3540,14 +3563,14 @@ void handleMainMenu(bool mode)
 						initClass(0);
 					}
 				}
-				if ( keystatus[SDL_SCANCODE_DOWN] || (*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) && rebindaction == -1) )
+				if ( keystatus[SDL_SCANCODE_DOWN] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_DOWN) && rebindaction == -1) )
 				{
 					keystatus[SDL_SCANCODE_DOWN] = 0;
 					if ( rebindaction == -1 )
 					{
-						*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) = 0;
+						inputs.controllerClearInput(clientnum, INJOY_DPAD_DOWN);
 					}
-					draw_cursor = false;
+					inputs.hideMouseCursors();
 
 					auto it = availableClasses.find(client_classes[0]);
 					int previousClassPicked = client_classes[0];
@@ -3603,39 +3626,39 @@ void handleMainMenu(bool mode)
 				{
 					ttfPrintTextFormatted(ttf16, subx1 + 32, suby1 + 56 + c * 16, "[ ] %s", language[20 + c]);
 				}
-				if ( mousestatus[SDL_BUTTON_LEFT] )
+				if ( inputs.bMouseLeft(clientnum) )
 				{
 					if ( omousex >= subx1 + 40 && omousex < subx1 + 72 )
 					{
 						if ( omousey >= suby1 + 56 + 16 * c && omousey < suby1 + 72 + 16 * c )
 						{
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 							stats[0]->appearance = c;
 						}
 					}
 				}
-				if ( keystatus[SDL_SCANCODE_UP] || (*inputPressed(joyimpulses[INJOY_DPAD_UP]) && rebindaction == -1) )
+				if ( keystatus[SDL_SCANCODE_UP] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_UP) && rebindaction == -1) )
 				{
 					keystatus[SDL_SCANCODE_UP] = 0;
 					if ( rebindaction == -1 )
 					{
-						*inputPressed(joyimpulses[INJOY_DPAD_UP]) = 0;
+						inputs.controllerClearInput(clientnum, INJOY_DPAD_UP);
 					}
-					draw_cursor = false;
+					inputs.hideMouseCursors();
 					stats[0]->appearance--;
 					if (stats[0]->appearance >= NUMAPPEARANCES)
 					{
 						stats[0]->appearance = NUMAPPEARANCES - 1;
 					}
 				}
-				if ( keystatus[SDL_SCANCODE_DOWN] || (*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) && rebindaction == -1) )
+				if ( keystatus[SDL_SCANCODE_DOWN] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_DOWN) && rebindaction == -1) )
 				{
 					keystatus[SDL_SCANCODE_DOWN] = 0;
 					if ( rebindaction == -1 )
 					{
-						*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) = 0;
+						inputs.controllerClearInput(clientnum, INJOY_DPAD_DOWN);
 					}
-					draw_cursor = false;
+					inputs.hideMouseCursors();
 					stats[0]->appearance++;
 					if (stats[0]->appearance >= NUMAPPEARANCES)
 					{
@@ -3656,7 +3679,18 @@ void handleMainMenu(bool mode)
 			// enter character name
 			if ( !SDL_IsTextInputActive() )
 			{
-				inputstr = stats[0]->name;
+				if (inputstr != stats[0]->name) //TODO: NX PORT: Not sure if this portion is correct...the PC version of this chunk has changed significantly in the interleaving time.
+				{
+					inputstr = stats[0]->name;
+#ifdef NINTENDO
+					auto result = nxKeyboard("Enter your character's name");
+					if (result.success)
+					{
+						strncpy(inputstr, result.str.c_str(), 21);
+						inputstr[21] = '\0';
+					}
+#endif
+				}
 				SDL_StartTextInput();
 			}
 			//strncpy(stats[0]->name,inputstr,16);
@@ -3670,7 +3704,7 @@ void handleMainMenu(bool mode)
 			if ( (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
 			{
 				int x;
-				TTF_SizeUTF8(ttf16, stats[0]->name, &x, NULL);
+				getSizeOfText(ttf16, stats[0]->name, &x, NULL);
 				ttfPrintText(ttf16, subx1 + 48 + x, suby1 + 64, "_");
 			}
 		}
@@ -3762,26 +3796,26 @@ void handleMainMenu(bool mode)
 				{
 					ttfPrintTextColor(ttf12, subx1 + 8, suby2 - 60 + TTF12_HEIGHT, uint32ColorBaronyBlue(*mainsurface), true, language[2982]);
 				}
-				if ( mousestatus[SDL_BUTTON_LEFT] )
+				if ( inputs.bMouseLeft(clientnum) )
 				{
 					if ( omousex >= subx1 + 40 && omousex < subx1 + 72 )
 					{
 						if ( omousey >= optionY.at(mode) && omousey < (optionY.at(mode) + optionHeight) )
 						{
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 							multiplayerselect = displayedOptionToGamemode.at(mode);
 						}
 					}
 				}
 			}
-			if (keystatus[SDL_SCANCODE_UP] || (*inputPressed(joyimpulses[INJOY_DPAD_UP]) && rebindaction == -1) )
+			if (keystatus[SDL_SCANCODE_UP] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_UP) && rebindaction == -1) )
 			{
 				keystatus[SDL_SCANCODE_UP] = 0;
 				if ( rebindaction == -1 )
 				{
-					*inputPressed(joyimpulses[INJOY_DPAD_UP]) = 0;
+					inputs.controllerClearInput(clientnum, INJOY_DPAD_UP);
 				}
-				draw_cursor = false;
+				inputs.hideMouseCursors();
 
 				Uint32 vIndex = 0;
 				for ( auto& option : displayedOptionToGamemode )
@@ -3801,14 +3835,14 @@ void handleMainMenu(bool mode)
 					multiplayerselect = displayedOptionToGamemode.at(nummodes - 1);
 				}
 			}
-			if ( keystatus[SDL_SCANCODE_DOWN] || (*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) && rebindaction == -1) )
+			if ( keystatus[SDL_SCANCODE_DOWN] || (inputs.bControllerInputPressed(clientnum, INJOY_DPAD_DOWN) && rebindaction == -1) )
 			{
 				keystatus[SDL_SCANCODE_DOWN] = 0;
 				if ( rebindaction == -1 )
 				{
-					*inputPressed(joyimpulses[INJOY_DPAD_DOWN]) = 0;
+					inputs.controllerClearInput(clientnum, INJOY_DPAD_DOWN);
 				}
-				draw_cursor = false;
+				inputs.hideMouseCursors();
 
 				Uint32 vIndex = 0;
 				for ( auto& option : displayedOptionToGamemode )
@@ -3841,7 +3875,18 @@ void handleMainMenu(bool mode)
 		// enter character name
 		if ( serialVerifyWindow == 0 && !SDL_IsTextInputActive() )
 		{
-			inputstr = serialInputText;
+			if (inputstr != serialInputText)
+			{
+				inputstr = serialInputText;
+#ifdef NINTENDO
+				auto result = nxKeyboard("Enter your character's name");
+				if (result.success)
+				{
+					strncpy(inputstr, result.str.c_str(), 21);
+					inputstr[21] = '\0'; //TODO: NX Port: The inputlen below names 63...? Should this be modified to match? Everywhere else, we operate on inputstr[21] when inputlen = 22.
+				}
+#endif
+			}
 			SDL_StartTextInput();
 		}
 		//strncpy(stats[0]->name,inputstr,16);
@@ -3904,7 +3949,7 @@ void handleMainMenu(bool mode)
 		else if ( (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
 		{
 			int x;
-			TTF_SizeUTF8(ttf12, serialInputText, &x, NULL);
+			getSizeOfText(ttf12, serialInputText, &x, NULL);
 			ttfPrintText(ttf12, subx1 + 16 + x, suby1 + 40, "_");
 		}
 	}
@@ -3918,14 +3963,14 @@ void handleMainMenu(bool mode)
 		int hovering_selection = -1; //0 to NUM_SERVER_FLAGS used for the game flags settings, e.g. are traps enabled, are cheats enabled, is minotaur enabled, etc.
 		SDL_Rect tooltip_box;
 
-		if ( *inputPressed(joyimpulses[INJOY_MENU_SETTINGS_NEXT]) && rebindaction == -1 )
+		if ( inputs.bControllerInputPressed(clientnum, INJOY_MENU_SETTINGS_NEXT) && rebindaction == -1 )
 		{
-			*inputPressed(joyimpulses[INJOY_MENU_SETTINGS_NEXT]) = 0;;
+			inputs.controllerClearInput(clientnum, INJOY_MENU_SETTINGS_NEXT);
 			changeSettingsTab(settings_tab + 1);
 		}
-		if ( *inputPressed(joyimpulses[INJOY_MENU_SETTINGS_PREV]) && rebindaction == -1 )
+		if ( inputs.bControllerInputPressed(clientnum, INJOY_MENU_SETTINGS_PREV) && rebindaction == -1 )
 		{
-			*inputPressed(joyimpulses[INJOY_MENU_SETTINGS_PREV]) = 0;
+			inputs.controllerClearInput(clientnum, INJOY_MENU_SETTINGS_PREV);
 			changeSettingsTab(settings_tab - 1);
 		}
 
@@ -3947,13 +3992,13 @@ void handleMainMenu(bool mode)
 				{
 					ttfPrintTextFormatted(ttf12, subx1 + 32, suby1 + 84 + c * 16, "[ ] %dx%d", width, height);
 				}
-				if ( mousestatus[SDL_BUTTON_LEFT] )
+				if ( inputs.bMouseLeft(clientnum) )
 				{
 					if ( omousex >= subx1 + 38 && omousex < subx1 + 62 )
 					{
 						if ( omousey >= suby1 + 84 + c * 16 && omousey < suby1 + 96 + c * 16 )
 						{
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 							settings_xres = width;
 							settings_yres = height;
 							resolutionChanged = true;
@@ -4046,58 +4091,58 @@ void handleMainMenu(bool mode)
 				ttfPrintTextFormatted(ttf12, subx1 + 236, suby1 + 300, "[ ] %s", language[3935]);
 			}
 
-			if ( mousestatus[SDL_BUTTON_LEFT] )
+			if ( inputs.bMouseLeft(clientnum) )
 			{
 				if ( omousex >= subx1 + 242 && omousex < subx1 + 266 )
 				{
 					if ( omousey >= suby1 + 84 && omousey < suby1 + 84 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_smoothlighting = (settings_smoothlighting == 0);
 					}
 					else if ( omousey >= suby1 + 108 && omousey < suby1 + 108 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_fullscreen = (settings_fullscreen == 0);
 					}
 					else if ( omousey >= suby1 + 132 && omousey < suby1 + 132 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_shaking = (settings_shaking == 0);
 					}
 					else if ( omousey >= suby1 + 156 && omousey < suby1 + 156 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_bobbing = (settings_bobbing == 0);
 					}
 					else if ( omousey >= suby1 + 180 && omousey < suby1 + 180 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_spawn_blood = (settings_spawn_blood == 0);
 					}
 					else if ( omousey >= suby1 + 204 && omousey < suby1 + 204 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_colorblind = (settings_colorblind == false);
 					}
 					else if ( omousey >= suby1 + 228 && omousey < suby1 + 228 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_light_flicker = (settings_light_flicker == false);
 					}
 					else if ( omousey >= suby1 + 252 && omousey < suby1 + 252 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_vsync = (settings_vsync == false);
 					}
 					else if ( omousey >= suby1 + 276 && omousey < suby1 + 276 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_status_effect_icons = (settings_status_effect_icons == false);
 					}
 					else if ( omousey >= suby1 + 300 && omousey < suby1 + 300 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_borderless = (settings_borderless == false);
 					}
 				}
@@ -4166,33 +4211,33 @@ void handleMainMenu(bool mode)
 				ttfPrintTextFormatted(ttf12, subx1 + 498, suby1 + 396, "[ ] %s", language[3159]);
 			}
 
-			if ( mousestatus[SDL_BUTTON_LEFT] )
+			if ( inputs.bMouseLeft(clientnum) )
 			{
 				if ( omousex >= subx1 + 498 && omousex < subx1 + 522 )
 				{
 					if ( omousey >= suby1 + 300 && omousey < suby1 + 300 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_uiscale_charactersheet = (settings_uiscale_charactersheet == 0);
 					}
 					else if ( omousey >= suby1 + 324 && omousey < suby1 + 324 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_uiscale_skillspage = (settings_uiscale_skillspage == 0);
 					}
 					else if ( omousey >= suby1 + 348 && omousey < suby1 + 348 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_hide_statusbar = (settings_hide_statusbar == 0);
 					}
 					else if ( omousey >= suby1 + 372 && omousey < suby1 + 372 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_hide_playertags = (settings_hide_playertags == 0);
 					}
 					else if ( omousey >= suby1 + 396 && omousey < suby1 + 396 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_show_skill_values = (settings_show_skill_values == 0);
 					}
 				}
@@ -4259,23 +4304,23 @@ void handleMainMenu(bool mode)
 			{
 				ttfPrintTextFormatted(ttf12, subx1 + 24, suby1 + 312, "[ ] %s", language[3371]);
 			}
-			if ( mousestatus[SDL_BUTTON_LEFT] )
+			if ( inputs.bMouseLeft(clientnum) )
 			{
 				if ( omousex >= subx1 + 30 && omousex < subx1 + 54 )
 				{
 					if ( omousey >= suby1 + 168 && omousey < suby1 + 264 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_minimap_ping_mute = (settings_minimap_ping_mute == false);
 					}
 					else if ( omousey >= suby1 + 192 && omousey < suby1 + 288 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_mute_audio_on_focus_lost = (settings_mute_audio_on_focus_lost == false);
 					}
 					else if ( omousey >= suby1 + 216 && omousey < suby1 + 312 + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_mute_player_monster_sounds = (settings_mute_player_monster_sounds == false);
 					}
 				}
@@ -4311,13 +4356,13 @@ void handleMainMenu(bool mode)
 				{
 					ttfPrintText(ttf12, subx1 + 24, suby1 + 84 + 16 * c, language[3901 + (c - 22)]);
 				}
-				if ( mousestatus[SDL_BUTTON_LEFT] && !rebindingkey )
+				if ( inputs.bMouseLeft(clientnum) && !rebindingkey )
 				{
 					if ( omousex >= subx1 + 24 && omousex < subx2 - 24 )
 					{
 						if ( omousey >= suby1 + 84 + c * 16 && omousey < suby1 + 96 + c * 16 )
 						{
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 							lastkeypressed = 0;
 							rebindingkey = true;
 							rebindkey = c;
@@ -4358,7 +4403,7 @@ void handleMainMenu(bool mode)
 					settings_impulses[rebindkey] = lastkeypressed;
 					if ( lastkeypressed == 283 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;  // fixes mouse-left not registering bug
+						inputs.mouseClearLeft(clientnum);  // fixes mouse-left not registering bug
 					}
 					rebindkey = -1;
 				}
@@ -4396,23 +4441,23 @@ void handleMainMenu(bool mode)
 			{
 				ttfPrintTextFormatted(ttf12, subx1 + 24, suby1 + 156, "[ ] %s", language[3918]);
 			}
-			if ( mousestatus[SDL_BUTTON_LEFT] )
+			if ( inputs.bMouseLeft(clientnum) )
 			{
 				if ( omousex >= subx1 + 30 && omousex < subx1 + 54 )
 				{
 					if ( omousey >= suby1 + 108 && omousey < suby1 + 120 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_reversemouse = (settings_reversemouse == 0);
 					}
 					if ( omousey >= suby1 + 132 && omousey < suby1 + 144 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_smoothmouse = (settings_smoothmouse == 0);
 					}
 					if ( omousey >= suby1 + 156 && omousey < suby1 + 168 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_disablemouserotationlimit = (settings_disablemouserotationlimit == 0);
 					}
 				}
@@ -4498,9 +4543,9 @@ void handleMainMenu(bool mode)
 				ttfPrintTextFormatted(ttf12, current_option_x, current_option_y, "[ ] %s", language[2401]);
 			}
 
-			if (mousestatus[SDL_BUTTON_LEFT] && mouseInBounds(current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
+			if (inputs.bMouseLeft(clientnum) && mouseInBounds(clientnum, current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
 			{
-				mousestatus[SDL_BUTTON_LEFT] = 0;
+				inputs.mouseClearLeft(clientnum);
 				settings_gamepad_leftx_invert = !settings_gamepad_leftx_invert;
 			}
 
@@ -4515,9 +4560,9 @@ void handleMainMenu(bool mode)
 				ttfPrintTextFormatted(ttf12, current_option_x, current_option_y, "[ ] %s", language[2402]);
 			}
 
-			if (mousestatus[SDL_BUTTON_LEFT] && mouseInBounds(current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
+			if (inputs.bMouseLeft(clientnum) && mouseInBounds(clientnum, current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
 			{
-				mousestatus[SDL_BUTTON_LEFT] = 0;
+				inputs.mouseClearLeft(clientnum);
 				settings_gamepad_lefty_invert = !settings_gamepad_lefty_invert;
 			}
 
@@ -4532,9 +4577,9 @@ void handleMainMenu(bool mode)
 				ttfPrintTextFormatted(ttf12, current_option_x, current_option_y, "[ ] %s", language[2403]);
 			}
 
-			if (mousestatus[SDL_BUTTON_LEFT] && mouseInBounds(current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
+			if (inputs.bMouseLeft(clientnum) && mouseInBounds(clientnum, current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
 			{
-				mousestatus[SDL_BUTTON_LEFT] = 0;
+				inputs.mouseClearLeft(clientnum);
 				settings_gamepad_rightx_invert = !settings_gamepad_rightx_invert;
 			}
 
@@ -4549,9 +4594,9 @@ void handleMainMenu(bool mode)
 				ttfPrintTextFormatted(ttf12, current_option_x, current_option_y, "[ ] %s", language[2404]);
 			}
 
-			if (mousestatus[SDL_BUTTON_LEFT] && mouseInBounds(current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
+			if (inputs.bMouseLeft(clientnum) && mouseInBounds(clientnum, current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
 			{
-				mousestatus[SDL_BUTTON_LEFT] = 0;
+				inputs.mouseClearLeft(clientnum);
 				settings_gamepad_righty_invert = !settings_gamepad_righty_invert;
 			}
 
@@ -4566,9 +4611,9 @@ void handleMainMenu(bool mode)
 				ttfPrintTextFormatted(ttf12, current_option_x, current_option_y, "[ ] %s", language[2405]);
 			}
 
-			if (mousestatus[SDL_BUTTON_LEFT] && mouseInBounds(current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
+			if (inputs.bMouseLeft(clientnum) && mouseInBounds(clientnum, current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
 			{
-				mousestatus[SDL_BUTTON_LEFT] = 0;
+				inputs.mouseClearLeft(clientnum);
 				settings_gamepad_menux_invert = !settings_gamepad_menux_invert;
 			}
 
@@ -4583,9 +4628,9 @@ void handleMainMenu(bool mode)
 				ttfPrintTextFormatted(ttf12, current_option_x, current_option_y, "[ ] %s", language[2406]);
 			}
 
-			if (mousestatus[SDL_BUTTON_LEFT] && mouseInBounds(current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
+			if (inputs.bMouseLeft(clientnum) && mouseInBounds(clientnum, current_option_x, current_option_x + strlen("[x]")*TTF12_WIDTH, current_option_y, current_option_y + TTF12_HEIGHT))
 			{
-				mousestatus[SDL_BUTTON_LEFT] = 0;
+				inputs.mouseClearLeft(clientnum);
 				settings_gamepad_menuy_invert = !settings_gamepad_menuy_invert;
 			}
 
@@ -4721,7 +4766,7 @@ void handleMainMenu(bool mode)
 			pad_x = autosort_options_x + (strlen(language[2912]) - 3) * (TTF12_WIDTH) + 8; // 3 chars from the end of string.
 			pad_y = autosort_options_y;
 			// hover text for autosort title text
-			if ( mouseInBounds(pad_x - 4, pad_x + 3 * TTF12_WIDTH + 8, current_y - 16 + 112, current_y - 16 + 124) )
+			if ( mouseInBounds(clientnum, pad_x - 4, pad_x + 3 * TTF12_WIDTH + 8, current_y - 16 + 112, current_y - 16 + 124) )
 			{
 				tooltip_box.x = omousex - TTF12_WIDTH * 32;
 				tooltip_box.y = omousey - (TTF12_HEIGHT * 3 + 16);
@@ -4821,7 +4866,7 @@ void handleMainMenu(bool mode)
 				{
 					ttfPrintTextFormatted(ttf12, subx1 + 36, current_y, "[ ] %s", flagStringBuffer);
 				}
-				if (mouseInBounds(subx1 + 36 + 6, subx1 + 36 + 24 + 6, current_y, current_y + 12))   //So many gosh dang magic numbers ._.
+				if (mouseInBounds(clientnum, subx1 + 36 + 6, subx1 + 36 + 24 + 6, current_y, current_y + 12))   //So many gosh dang magic numbers ._.
 				{
 					if ( i < 5 )
 					{
@@ -4917,53 +4962,53 @@ void handleMainMenu(bool mode)
 
 			current_y = options_start_y;
 
-			if ( mousestatus[SDL_BUTTON_LEFT] )
+			if ( inputs.bMouseLeft(clientnum) )
 			{
 				if ( omousex >= subx1 + 42 && omousex < subx1 + 66 )
 				{
 					if ( omousey >= current_y && omousey < current_y + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_broadcast = (settings_broadcast == false);
 					}
 					else if ( omousey >= (current_y += 16) && omousey < current_y + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_nohud = (settings_nohud == false);
 					}
 					else if ( omousey >= (current_y += 16) && omousey < current_y + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_auto_hotbar_new_items = (settings_auto_hotbar_new_items == false);
 					}
 					else if ( omousey >= (current_y += 16) && omousey < current_y + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_auto_appraise_new_items = (settings_auto_appraise_new_items == false);
 					}
 					else if ( omousey >= (current_y += 16) && omousey < current_y + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_disable_messages = (settings_disable_messages == false);
 					}
 					else if ( omousey >= (current_y += 16) && omousey < current_y + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_right_click_protect = (settings_right_click_protect == false);
 					}
 					else if ( omousey >= (current_y += 16) && omousey < current_y + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_hotbar_numkey_quick_add = (settings_hotbar_numkey_quick_add == false);
 					}
 					else if ( omousey >= (current_y += 16) && omousey < current_y + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_lock_right_sidebar = (settings_lock_right_sidebar == false);
 					}
 					else if ( omousey >= (current_y += 16) && omousey < current_y + 12 )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_show_game_timer_always = (settings_show_game_timer_always == false);
 					}
 				}
@@ -4971,14 +5016,14 @@ void handleMainMenu(bool mode)
 				{
 					if ( settings_auto_hotbar_new_items )
 					{
-						if ( mousestatus[SDL_BUTTON_LEFT] )
+						if ( inputs.bMouseLeft(clientnum) )
 						{
 							for ( int i = 0; i < NUM_HOTBAR_CATEGORIES; ++i )
 							{
-								if ( mouseInBounds(hotbar_options_x, hotbar_options_x + 24, hotbar_options_y, hotbar_options_y + 12) )
+								if ( mouseInBounds(clientnum, hotbar_options_x, hotbar_options_x + 24, hotbar_options_y, hotbar_options_y + 12) )
 								{
 									settings_auto_hotbar_categories[i] = !settings_auto_hotbar_categories[i];
-									mousestatus[SDL_BUTTON_LEFT] = 0;
+									inputs.mouseClearLeft(clientnum);
 								}
 								hotbar_options_x += 128;
 								if ( i == 3 || i == 7 )
@@ -4991,27 +5036,27 @@ void handleMainMenu(bool mode)
 					}
 
 					// autosort category toggles
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
 						for ( int i = 0; i < NUM_AUTOSORT_CATEGORIES; ++i )
 						{
-							if ( mouseInBounds(autosort_options_x, autosort_options_x + 16, autosort_options_y, autosort_options_y + 12) )
+							if ( mouseInBounds(clientnum, autosort_options_x, autosort_options_x + 16, autosort_options_y, autosort_options_y + 12) )
 							{
 								--settings_autosort_inventory_categories[i];
 								if ( settings_autosort_inventory_categories[i] < -9 )
 								{
 									settings_autosort_inventory_categories[i] = 9;
 								}
-								mousestatus[SDL_BUTTON_LEFT] = 0;
+								inputs.mouseClearLeft(clientnum);
 							}
-							else if ( mouseInBounds(autosort_options_x + 36, autosort_options_x + 52, autosort_options_y, autosort_options_y + 12) )
+							else if ( mouseInBounds(clientnum, autosort_options_x + 36, autosort_options_x + 52, autosort_options_y, autosort_options_y + 12) )
 							{
 								++settings_autosort_inventory_categories[i];
 								if ( settings_autosort_inventory_categories[i] > 9 )
 								{
 									settings_autosort_inventory_categories[i] = -9;
 								}
-								mousestatus[SDL_BUTTON_LEFT] = 0;
+								inputs.mouseClearLeft(clientnum);
 							}
 							autosort_options_x += 128;
 							if ( i == 3 || i == 7 )
@@ -5029,9 +5074,9 @@ void handleMainMenu(bool mode)
 					for ( int i = 0; i < NUM_SERVER_FLAGS; i++, current_y += 16 )
 					{
 						if ( !gameModeManager.isServerflagDisabledForCurrentMode(i)
-							&& mouseInBounds(subx1 + 36 + 6, subx1 + 36 + 24 + 6, current_y, current_y + 12) )
+							&& mouseInBounds(clientnum, subx1 + 36 + 6, subx1 + 36 + 24 + 6, current_y, current_y + 12) )
 						{
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 
 							// toggle flag
 							settings_svFlags ^= power(2, i);
@@ -5055,9 +5100,9 @@ void handleMainMenu(bool mode)
 					//tooltip_box.h = TTF12_HEIGHT * 2 + 8;
 					//drawTooltip(&tooltip_box);
 					//ttfPrintTextFormatted(ttf12, tooltip_box.x + 4, tooltip_box.y + 4, language[3148]);
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_disableFPSLimitOnNetworkMessages = (settings_disableFPSLimitOnNetworkMessages == false);
 					}
 				}
@@ -5069,9 +5114,9 @@ void handleMainMenu(bool mode)
 					tooltip_box.h = TTF12_HEIGHT * 2 + 8;
 					drawTooltip(&tooltip_box);
 					ttfPrintTextFormatted(ttf12, tooltip_box.x + 4, tooltip_box.y + 4, language[3148]);
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						settings_disableMultithreadedSteamNetworking = true;// (settings_disableMultithreadedSteamNetworking == false);
 					}
 				}
@@ -5083,9 +5128,9 @@ void handleMainMenu(bool mode)
 					tooltip_box.h = TTF12_HEIGHT * 2 + 8;
 					drawTooltip(&tooltip_box);
 					ttfPrintTextFormatted(ttf12, tooltip_box.x + 4, tooltip_box.y + 4, language[3148]);*/
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 						LobbyHandler.settings_crossplayEnabled = !LobbyHandler.settings_crossplayEnabled;
 					}
 				}
@@ -5407,15 +5452,26 @@ void handleMainMenu(bool mode)
 			// enter port number
 			if ( !SDL_IsTextInputActive() )
 			{
-				SDL_StartTextInput();
-				inputstr = portnumber_char;
+				SDL_StartTextInput(); //TODO: NX PORT: Why is the order different in some of these chunks? For example, some of them start text input first, others start it after the below chunk of code.
+				if (inputstr != portnumber_char)
+				{
+					inputstr = portnumber_char;
+#ifdef NINTENDO
+					auto result = nxKeyboard("Enter port number");
+					if (result.success)
+					{
+						strncpy(inputstr, result.str.c_str(), 21);
+						inputstr[21] = '\0'; //TODO: NX PORT: Why 21? inputlen = 5 down there, shouldn't this be inputstr[4]?
+					}
+#endif
+				}
 			}
 			//strncpy(portnumber_char,inputstr,5);
 			inputlen = 5;
 			if ( (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
 			{
 				int x;
-				TTF_SizeUTF8(ttf12, portnumber_char, &x, NULL);
+				getSizeOfText(ttf12, portnumber_char, &x, NULL);
 				ttfPrintText(ttf12, subx1 + 12 + x, suby1 + 46, "_");
 			}
 		}
@@ -5439,14 +5495,26 @@ void handleMainMenu(bool mode)
 			if ( !SDL_IsTextInputActive() )
 			{
 				SDL_StartTextInput();
-				inputstr = connectaddress;
+
+				if (inputstr != connectaddress)
+				{
+					inputstr = connectaddress;
+#ifdef NINTENDO
+					auto result = nxKeyboard("Enter address");
+					if (result.success)
+					{
+						strncpy(inputstr, result.str.c_str(), 21);
+						inputstr[21] = '\0'; //TODO: NX PORT: Why not inputstr[30], since inputlen = 31?
+					}
+#endif
+				}
 			}
 			//strncpy(connectaddress,inputstr,31);
 			inputlen = 31;
 			if ( (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
 			{
 				int x;
-				TTF_SizeUTF8(ttf12, connectaddress, &x, NULL);
+				getSizeOfText(ttf12, connectaddress, &x, NULL);
 				ttfPrintText(ttf12, subx1 + 12 + x, suby1 + 46, "_");
 			}
 		}
@@ -6480,20 +6548,20 @@ void handleMainMenu(bool mode)
 		}
 
 		// select gui element w/ mouse
-		if ( mousestatus[SDL_BUTTON_LEFT] )
+		if ( inputs.bMouseLeft(clientnum) )
 		{
-			if ( mouseInBounds(subx1 + 16, subx2 - 16, suby2 - 48, suby2 - 32) )
+			if ( mouseInBounds(clientnum, subx1 + 16, subx2 - 16, suby2 - 48, suby2 - 32) )
 			{
-				mousestatus[SDL_BUTTON_LEFT] = 0;
+				inputs.mouseClearLeft(clientnum);
 
 				// chatbox
 				inputstr = lobbyChatbox;
 				inputlen = LOBBY_CHATBOX_LENGTH - 1;
 				cursorflash = ticks;
 			}
-			else if ( mouseInBounds(xres / 2, subx2 - 32, suby1 + 56, suby1 + 68) && !directConnect )
+			else if ( mouseInBounds(clientnum, xres / 2, subx2 - 32, suby1 + 56, suby1 + 68) && !directConnect )
 			{
-				mousestatus[SDL_BUTTON_LEFT] = 0;
+				inputs.mouseClearLeft(clientnum);
 
 				// lobby name
 				if ( LobbyHandler.getP2PType() == LobbyHandler_t::LobbyServiceType::LOBBY_STEAM )
@@ -6519,9 +6587,9 @@ void handleMainMenu(bool mode)
 			{
 				for ( i = 0; i < NUM_SERVER_FLAGS; i++ )
 				{
-					if ( mouseInBounds(xres / 2 + 8 + 6, xres / 2 + 8 + 30, suby1 + 80 + i * 16, suby1 + 92 + i * 16) )
+					if ( mouseInBounds(clientnum, xres / 2 + 8 + 6, xres / 2 + 8 + 30, suby1 + 80 + i * 16, suby1 + 92 + i * 16) )
 					{
-						mousestatus[SDL_BUTTON_LEFT] = 0;
+						inputs.mouseClearLeft(clientnum);
 
 						// toggle flag
 						svFlags ^= power(2, i);
@@ -6564,9 +6632,9 @@ void handleMainMenu(bool mode)
 #ifdef STEAMWORKS
 					for ( Uint32 i = 0; i < 2; i++ )
 					{
-						if ( mouseInBounds(xres / 2 + 8 + 6, xres / 2 + 8 + 30, suby1 + 256 + i * 16, suby1 + 268 + i * 16) )
+						if ( mouseInBounds(clientnum, xres / 2 + 8 + 6, xres / 2 + 8 + 30, suby1 + 256 + i * 16, suby1 + 268 + i * 16) )
 						{
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 							switch ( i )
 							{
 								default:
@@ -6590,9 +6658,9 @@ void handleMainMenu(bool mode)
 #ifdef USE_EOS
 					for ( Uint32 i = 0; i < 2; i++ )
 					{
-						if ( mouseInBounds(xres / 2 + 8 + 6, xres / 2 + 8 + 30, suby1 + 256 + i * 16, suby1 + 268 + i * 16) )
+						if ( mouseInBounds(clientnum, xres / 2 + 8 + 6, xres / 2 + 8 + 30, suby1 + 256 + i * 16, suby1 + 268 + i * 16) )
 						{
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 							switch ( i )
 							{
 								default:
@@ -6676,7 +6744,7 @@ void handleMainMenu(bool mode)
 			{
 				ttfPrintTextFormatted(ttf12, xres / 2 + 8, suby1 + 80 + 16 * i, "[ ] %s", flagStringBuffer);
 			}
-			if (mouseInBounds((xres / 2) + 8 + 6, (xres / 2) + 8 + 30, suby1 + 80 + (i * 16), suby1 + 92 + (i * 16)))   //So many gosh dang magic numbers ._.
+			if (mouseInBounds(clientnum, (xres / 2) + 8 + 6, (xres / 2) + 8 + 30, suby1 + 80 + (i * 16), suby1 + 92 + (i * 16)))   //So many gosh dang magic numbers ._.
 			{
 				if ( i < 5 )
 				{
@@ -6770,7 +6838,7 @@ void handleMainMenu(bool mode)
 				if ( (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
 				{
 					int x;
-					TTF_SizeUTF8(ttf12, currentLobbyName, &x, NULL);
+					getSizeOfText(ttf12, currentLobbyName, &x, NULL);
 					ttfPrintTextFormatted(ttf12, xres / 2 + 2 + x, suby1 + 58, "_");
 				}
 			}
@@ -6824,7 +6892,7 @@ void handleMainMenu(bool mode)
 				if ( (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
 				{
 					int x;
-					TTF_SizeUTF8(ttf12, EOS.currentLobbyName, &x, NULL);
+					getSizeOfText(ttf12, EOS.currentLobbyName, &x, NULL);
 					ttfPrintTextFormatted(ttf12, xres / 2 + 2 + x, suby1 + 58, "_");
 				}
 			}
@@ -6891,6 +6959,7 @@ void handleMainMenu(bool mode)
 		// handle chatbox text entry
 		if ( !SDL_IsTextInputActive() )
 		{
+			//TODO: NX PORT: Does this need to be updated for the Switch? Even if only to just disable this feature entirely?
 			// this is the default text entry box in this window.
 			inputstr = lobbyChatbox;
 			inputlen = LOBBY_CHATBOX_LENGTH - 1;
@@ -7036,7 +7105,7 @@ void handleMainMenu(bool mode)
 			if ( (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
 			{
 				int x;
-				TTF_SizeUTF8(ttf12, lobbyChatbox, &x, NULL);
+				getSizeOfText(ttf12, lobbyChatbox, &x, NULL);
 				ttfPrintTextFormatted(ttf12, subx1 + 18 + x + TTF12_WIDTH, suby2 - 46, "_");
 			}
 		}
@@ -7213,7 +7282,7 @@ void handleMainMenu(bool mode)
 				}
 
 				ttfPrintTextFormattedColor(ttf12, xres / 2 + 8, suby1 + 320, modsStatusColor, "%s", modStatusString.c_str());
-				if ( mouseInBounds(xres / 2 + 8, xres / 2 + 8 + 31 * TTF12_WIDTH, suby1 + 304, suby1 + 320 + TTF12_HEIGHT) )
+				if ( mouseInBounds(clientnum, xres / 2 + 8, xres / 2 + 8 + 31 * TTF12_WIDTH, suby1 + 304, suby1 + 320 + TTF12_HEIGHT) )
 				{
 					tooltip_box.w = 60 * TTF12_WIDTH + 8;
 					tooltip_box.x = mousex - 16 - tooltip_box.w;
@@ -7426,10 +7495,10 @@ void handleMainMenu(bool mode)
 			if ( numEntriesTotal > numEntriesToShow )
 			{
 				drawRect(&slider, SDL_MapRGB(mainsurface->format, 64, 64, 64), 255);
-				if ( mouseInBounds(filename_padx, slider.x + slider.w,
+				if ( mouseInBounds(clientnum, filename_padx, slider.x + slider.w,
 					slider.y, slider.y + slider.h) )
 				{
-					if ( mouseInBounds(slider.x, slider.x + slider.w,
+					if ( mouseInBounds(clientnum, slider.x, slider.x + slider.w,
 						slider.y, slider.y + slider.h) )
 					{
 						drawScrollTooltip = true;
@@ -7568,13 +7637,13 @@ void handleMainMenu(bool mode)
 		{
 			if ( !scoreDisplayMultiplayer )
 			{
-				TTF_SizeUTF8(ttf12, "show multiplayer", &w, &h);
+				getSizeOfText(ttf12, "show multiplayer", &w, &h);
 				ttfPrintText(ttf12, toggleText_x + (strlen("show multiplayer") * 12 + 8 - w) / 2, toggleText_y + (20 - h) / 2 + 3, "show multiplayer");
 			}
 			else
 			{
 				scoresPtr = &topscoresMultiplayer;
-				TTF_SizeUTF8(ttf12, "show solo", &w, &h);
+				getSizeOfText(ttf12, "show solo", &w, &h);
 				ttfPrintText(ttf12, toggleText_x + (strlen("show multiplayer") * 12 + 8 - w) / 2, toggleText_y + (20 - h) / 2 + 3, "show solo");
 			}
 		}
@@ -7656,9 +7725,9 @@ void handleMainMenu(bool mode)
 				rotateBtn.x = camera_charsheet.winx + camera_charsheet.winw - rotateBtn.w;
 				rotateBtn.y = camera_charsheet.winy + camera_charsheet.winh - rotateBtn.h;
 				drawWindow(rotateBtn.x, rotateBtn.y, rotateBtn.x + rotateBtn.w, rotateBtn.y + rotateBtn.h);
-				if ( mouseInBounds(rotateBtn.x, rotateBtn.x + rotateBtn.w, rotateBtn.y, rotateBtn.y + rotateBtn.h) )
+				if ( mouseInBounds(clientnum, rotateBtn.x, rotateBtn.x + rotateBtn.w, rotateBtn.y, rotateBtn.y + rotateBtn.h) )
 				{
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
 						camera_charsheet_offsetyaw += 0.05;
 						if ( camera_charsheet_offsetyaw > 2 * PI )
@@ -7673,9 +7742,9 @@ void handleMainMenu(bool mode)
 				rotateBtn.x = camera_charsheet.winx + camera_charsheet.winw - rotateBtn.w * 2 - 4;
 				rotateBtn.y = camera_charsheet.winy + camera_charsheet.winh - rotateBtn.h;
 				drawWindow(rotateBtn.x, rotateBtn.y, rotateBtn.x + rotateBtn.w, rotateBtn.y + rotateBtn.h);
-				if ( mouseInBounds(rotateBtn.x, rotateBtn.x + rotateBtn.w, rotateBtn.y, rotateBtn.y + rotateBtn.h) )
+				if ( mouseInBounds(clientnum, rotateBtn.x, rotateBtn.x + rotateBtn.w, rotateBtn.y, rotateBtn.y + rotateBtn.h) )
 				{
-					if ( mousestatus[SDL_BUTTON_LEFT] )
+					if ( inputs.bMouseLeft(clientnum) )
 					{
 						camera_charsheet_offsetyaw -= 0.05;
 						if ( camera_charsheet_offsetyaw < 0.f )
@@ -7956,10 +8025,10 @@ void handleMainMenu(bool mode)
 		if ( numSaves > numSavesToShow )
 		{
 			drawRect(&slider, SDL_MapRGB(mainsurface->format, 64, 64, 64), 255);
-			if ( mouseInBounds(filename_padx, slider.x + slider.w,
+			if ( mouseInBounds(clientnum, filename_padx, slider.x + slider.w,
 				slider.y, slider.y + slider.h) )
 			{
-				if ( mouseInBounds(slider.x, slider.x + slider.w,
+				if ( mouseInBounds(clientnum, slider.x, slider.x + slider.w,
 					slider.y, slider.y + slider.h) )
 				{
 					drawScrollTooltip = true;
@@ -8005,7 +8074,7 @@ void handleMainMenu(bool mode)
 		int numMultiplayerSaves = 0;
 
 		// draw the content
-		for ( int i = 0; i < numSaves && !savegamesList.empty(); ++i )
+		for ( int i = 0; i < numSaves && !savegamesList.empty(); ++i ) //TODO: Why did this line add `&& !savegamesList.empty()` ?
 		{
 			filename_padx = subx1 + 16;
 
@@ -8090,7 +8159,7 @@ void handleMainMenu(bool mode)
 					}
 				}
 				ttfPrintTextFormatted(ttf12, text_x + 6, text_y, "%s", "X");
-				if ( mouseInBounds(filename_padx, filename_padx + 2 * TTF12_WIDTH + 8, filename_pady, filename_pady + TTF12_HEIGHT * 2 + 4) )
+				if ( mouseInBounds(clientnum, filename_padx, filename_padx + 2 * TTF12_WIDTH + 8, filename_pady, filename_pady + TTF12_HEIGHT * 2 + 4) )
 				{
 					drawDeleteTooltip = true;
 				}
@@ -8171,7 +8240,7 @@ void handleMainMenu(bool mode)
 				int entriesToScroll = std::max(static_cast<int>((currentDirectoryFiles.size() / numFileEntries) - 1), 0);
 				entriesToScroll = entriesToScroll * numFileEntries + (currentDirectoryFiles.size() % numFileEntries);
 
-				if ( mouseInBounds(filename_padx - 4, filename_padx2, 
+				if ( mouseInBounds(clientnum, filename_padx - 4, filename_padx2,
 					filename_pady, filename_pady2) && currentDirectoryFiles.size() > numFileEntries )
 				{
 					if ( mousestatus[SDL_BUTTON_WHEELUP] )
@@ -8187,13 +8256,13 @@ void handleMainMenu(bool mode)
 				}
 				for ( int i = 1; i <= numFileEntries; ++i )
 				{
-					if ( mouseInBounds(filename_padx - 4, filename_padx2,
+					if ( mouseInBounds(clientnum, filename_padx - 4, filename_padx2,
 						filename_pady - 2, filename_pady - 2 + i * TTF12_HEIGHT) )
 					{
-						if ( mousestatus[SDL_BUTTON_LEFT] )
+						if ( inputs.bMouseLeft(clientnum) )
 						{
 							gamemods_window_fileSelect = i;
-							mousestatus[SDL_BUTTON_LEFT] = 0;
+							inputs.mouseClearLeft(clientnum);
 						}
 					}
 				}
@@ -8336,9 +8405,9 @@ void handleMainMenu(bool mode)
 									}
 								}
 
-								if ( mouseInBounds(status_padx, status_padx + 32 * TTF12_WIDTH, status_pady - 4, status_pady + TTF12_HEIGHT) )
+								if ( mouseInBounds(clientnum, status_padx, status_padx + 32 * TTF12_WIDTH, status_pady - 4, status_pady + TTF12_HEIGHT) )
 								{
-									if ( mousestatus[SDL_BUTTON_LEFT] )
+									if ( inputs.bMouseLeft(clientnum) )
 									{
 										switch ( fields )
 										{
@@ -8353,7 +8422,7 @@ void handleMainMenu(bool mode)
 											default:
 												break;
 										}
-										mousestatus[SDL_BUTTON_LEFT] = 0;
+										inputs.mouseClearLeft(clientnum);
 									}
 								}
 
@@ -8367,7 +8436,7 @@ void handleMainMenu(bool mode)
 									&& (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
 								{
 									int x;
-									TTF_SizeUTF8(ttf12, inputstr, &x, NULL);
+									getSizeOfText(ttf12, inputstr, &x, NULL);
 									ttfPrintText(ttf12, status_padx + x + 8, status_pady, "_");
 								}
 								status_pady += 2 * TTF12_HEIGHT;
@@ -8557,7 +8626,7 @@ void handleMainMenu(bool mode)
 				if ( gamemods_mountedFilepaths.size() > 0 && gamemods_window == 3 )
 				{
 					ttfPrintTextFormatted(ttf12, filename_padx2 - modInfoStr.length() * TTF12_WIDTH - 16, filename_pady, "%s %2d", modInfoStr.c_str(), gamemods_mountedFilepaths.size());
-					if ( mouseInBounds(filename_padx2 - modInfoStr.length() * TTF12_WIDTH - 16, filename_padx2, filename_pady, filename_pady + TTF12_HEIGHT) )
+					if ( mouseInBounds(clientnum, filename_padx2 - modInfoStr.length() * TTF12_WIDTH - 16, filename_padx2, filename_pady, filename_pady + TTF12_HEIGHT) )
 					{
 						drawModLoadOrder = true;
 					}
@@ -8584,7 +8653,7 @@ void handleMainMenu(bool mode)
 				if ( numSubscribedItemsReturned > numFileEntries )
 				{
 					drawRect(&slider, SDL_MapRGB(mainsurface->format, 64, 64, 64), 255);
-					if ( mouseInBounds(filename_padx, slider.x + slider.w,
+					if ( mouseInBounds(clientnum, filename_padx, slider.x + slider.w,
 						slider.y, slider.y + slider.h) )
 					{
 						if ( mousestatus[SDL_BUTTON_WHEELUP] )
@@ -8685,7 +8754,7 @@ void handleMainMenu(bool mode)
 						ttfPrintTextFormatted(ttf12, filename_padx + 8, filename_pady + TTF12_HEIGHT, "Desc: %s", line.c_str());
 
 						// if hovering over title or description, provide more info...
-						if ( mouseInBounds(filename_padx + 8, filename_padx + 8 + 52 * TTF12_WIDTH, filename_pady + TTF12_HEIGHT, filename_pady + 2 * TTF12_HEIGHT) )
+						if ( mouseInBounds(clientnum, filename_padx + 8, filename_padx + 8 + 52 * TTF12_WIDTH, filename_pady + TTF12_HEIGHT, filename_pady + 2 * TTF12_HEIGHT) )
 						{
 							drawExtendedInformationForMod = i;
 						}
@@ -8904,7 +8973,7 @@ void handleMainMenu(bool mode)
 		}
 #endif //STEAMWORKS
 
-		if ( gamemods_window == 6 )
+		if ( gamemods_window == 6 ) //TODO: NX PORT: Does this need any changes for the switch? Even if only to entirely disable the feature?
 		{
 			// create blank file structure for a mod.
 			filename_padx = subx1 + 16;
@@ -8923,7 +8992,7 @@ void handleMainMenu(bool mode)
 				&& (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
 			{
 				int x;
-				TTF_SizeUTF8(ttf12, inputstr, &x, NULL);
+				getSizeOfText(ttf12, inputstr, &x, NULL);
 				ttfPrintText(ttf12, filename_padx + x, filename_pady, "_");
 			}
 			filename_pady += TTF12_HEIGHT + 8;
@@ -8974,7 +9043,7 @@ void handleMainMenu(bool mode)
 			if ( gamemods_mountedFilepaths.size() > 0 )
 			{
 				ttfPrintTextFormatted(ttf12, filename_padx2 - modInfoStr.length() * TTF12_WIDTH - 16, filename_pady, "%s %2d", modInfoStr.c_str(), gamemods_mountedFilepaths.size());
-				if ( mouseInBounds(filename_padx2 - modInfoStr.length() * TTF12_WIDTH - 16, filename_padx2, filename_pady, filename_pady + TTF12_HEIGHT) )
+				if ( mouseInBounds(clientnum, filename_padx2 - modInfoStr.length() * TTF12_WIDTH - 16, filename_padx2, filename_pady, filename_pady + TTF12_HEIGHT) )
 				{
 					drawModLoadOrder = true;
 				}
@@ -9000,7 +9069,7 @@ void handleMainMenu(bool mode)
 			if ( numLocalFolders > numFileEntries )
 			{
 				drawRect(&slider, SDL_MapRGB(mainsurface->format, 64, 64, 64), 255);
-				if ( mouseInBounds(filename_padx, slider.x + slider.w,
+				if ( mouseInBounds(clientnum, filename_padx, slider.x + slider.w,
 					slider.y, slider.y + slider.h) )
 				{
 					if ( mousestatus[SDL_BUTTON_WHEELUP] )
@@ -9160,7 +9229,7 @@ void handleMainMenu(bool mode)
 		if ( gameModeManager.Tutorial.levels.size() > numFileEntries )
 		{
 			drawRect(&slider, SDL_MapRGB(mainsurface->format, 64, 64, 64), 255);
-			if ( mouseInBounds(filename_padx, slider.x + slider.w,
+			if ( mouseInBounds(clientnum, filename_padx, slider.x + slider.w,
 				slider.y, slider.y + slider.h) )
 			{
 				if ( mousestatus[SDL_BUTTON_WHEELUP] )
@@ -9212,7 +9281,7 @@ void handleMainMenu(bool mode)
 			highlightEntry.h = filename_rowHeight + 8;
 			drawRect(&highlightEntry, SDL_MapRGB(mainsurface->format, 128, 128, 128), 64);
 
-			if ( mouseInBounds(highlightEntry.x, highlightEntry.x + highlightEntry.w, highlightEntry.y - 2, highlightEntry.y + highlightEntry.h + 4) )
+			if ( mouseInBounds(clientnum, highlightEntry.x, highlightEntry.x + highlightEntry.w, highlightEntry.y - 2, highlightEntry.y + highlightEntry.h + 4) )
 			{
 				menu.selectedMenuItem = i;
 			}
@@ -9313,8 +9382,6 @@ void handleMainMenu(bool mode)
 			gamePaused = false;
 			multiplayerselect = SINGLE;
 			intro = true; //Fix items auto-adding to the hotbar on game restart.
-			swapWeaponGimpTimer = 0;
-			pickaxeGimpTimer = 0;
 
 			if ( gameModeManager.getMode() == GameModeManager_t::GAME_MODE_DEFAULT )
 			{
@@ -9338,15 +9405,20 @@ void handleMainMenu(bool mode)
 			entity_uids = 1;
 			loading = true;
 			darkmap = false;
-			deinitShapeshiftHotbar();
-			for ( c = 0; c < NUM_HOTBAR_ALTERNATES; ++c )
+
+			for ( int i = 0; i < MAXPLAYERS; ++i )
 			{
-				selected_spell_alternate[c] = NULL;
-				hotbarShapeshiftInit[c] = false;
+				players[i]->init();
+				players[i]->hud.reset();
+				deinitShapeshiftHotbar(i);
+				for ( c = 0; c < NUM_HOTBAR_ALTERNATES; ++c )
+				{
+					players[i]->hotbar.hotbarShapeshiftInit[c] = false;
+				}
+				players[i]->shootmode = true;
+				players[i]->magic.clearSelectedSpells();
+				enemyHPDamageBarHandler[i].HPBars.clear();
 			}
-			selected_spell = NULL;
-			selected_spell_last_appearance = -1;
-			shootmode = true;
 			currentlevel = startfloor;
 			secretlevel = false;
 			victory = 0;
@@ -9357,9 +9429,11 @@ void handleMainMenu(bool mode)
 			{
 				conductGameChallenges[CONDUCT_CHEATS_ENABLED] = 1;
 			}
-			enemyHPDamageBarHandler.HPBars.clear();
 
-			minimapPings.clear(); // clear minimap pings
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				minimapPings[i].clear(); // clear minimap pings
+			}
 			globalLightModifierActive = GLOBAL_LIGHT_MODIFIER_STOPPED;
 			gameplayCustomManager.readFromFile();
 			textSourceScript.scriptVariables.clear();
@@ -9393,10 +9467,12 @@ void handleMainMenu(bool mode)
 				}
 			}
 
-			// clear follower menu entities.
-			FollowerMenu.closeFollowerMenuGUI(true);
-
-			list_FreeAll(&damageIndicators);
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				// clear follower menu entities.
+				FollowerMenu[i].closeFollowerMenuGUI(true);
+				list_FreeAll(&damageIndicators[i]);
+			}
 			for ( c = 0; c < NUMMONSTERS; c++ )
 			{
 				kills[c] = 0;
@@ -9405,18 +9481,18 @@ void handleMainMenu(bool mode)
 			// close chests
 			for ( c = 0; c < MAXPLAYERS; ++c )
 			{
-				if ( c > 0 && !client_disconnected[c] )
-				{
-					if ( openedChest[c] )
-					{
-						openedChest[c]->closeChestServer();
-					}
-				}
-				else if ( c == 0 )
+				if ( players[c]->isLocalPlayer() )
 				{
 					if ( openedChest[c] )
 					{
 						openedChest[c]->closeChest();
+					}
+				}
+				else if ( c > 0 && !client_disconnected[c] )
+				{
+					if ( openedChest[c] )
+					{
+						openedChest[c]->closeChestServer();
 					}
 				}
 			}
@@ -9508,10 +9584,13 @@ void handleMainMenu(bool mode)
 				}
 
 				// hack to fix these things from breaking everything...
-				hudarm = NULL;
-				hudweapon = NULL;
-				magicLeftHand = NULL;
-				magicRightHand = NULL;
+				for ( int i = 0; i < MAXPLAYERS; ++i )
+				{
+					players[i]->hud.arm = nullptr;
+					players[i]->hud.weapon = nullptr;
+					players[i]->hud.magicLeftHand = nullptr;
+					players[i]->hud.magicRightHand = nullptr;
+				}
 
 				for ( node = map.entities->first; node != nullptr; node = node->next )
 				{
@@ -9627,7 +9706,7 @@ void handleMainMenu(bool mode)
 
 											node_t* newNode = list_AddNodeLast(&monster->children);
 											newNode->element = tempStats->copyStats();
-											//newNode->deconstructor = &tempStats->~Stat;
+											newNode->deconstructor = &statDeconstructor;
 											newNode->size = sizeof(tempStats);
 
 											Stat* monsterStats = (Stat*)newNode->element;
@@ -9679,9 +9758,9 @@ void handleMainMenu(bool mode)
 												serverUpdateAllyStat(c, monster->getUID(), monsterStats->LVL, monsterStats->HP, monsterStats->MAXHP, monsterStats->type);
 											}
 
-											if ( !FollowerMenu.recentEntity && c == clientnum )
+											if ( !FollowerMenu[c].recentEntity && players[c]->isLocalPlayer() )
 											{
-												FollowerMenu.recentEntity = monster;
+												FollowerMenu[c].recentEntity = monster;
 											}
 										}
 									}
@@ -9735,10 +9814,13 @@ void handleMainMenu(bool mode)
 			else
 			{
 				// hack to fix these things from breaking everything...
-				hudarm = NULL;
-				hudweapon = NULL;
-				magicLeftHand = NULL;
-				magicRightHand = NULL;
+				for ( int i = 0; i < MAXPLAYERS; ++i )
+				{
+					players[i]->hud.arm = nullptr;
+					players[i]->hud.weapon = nullptr;
+					players[i]->hud.magicLeftHand = nullptr;
+					players[i]->hud.magicRightHand = nullptr;
+				}
 
 				client_disconnected[0] = false;
 
@@ -9881,8 +9963,8 @@ void handleMainMenu(bool mode)
 			for ( c = 0; c < MAXPLAYERS; c++ )
 			{
 				safePacketsReceivedMap[c].clear();
+				players[c]->messageZone.deleteAllNotificationMessages();
 			}
-			deleteAllNotificationMessages();
 			if ( !loadingsavegame ) // don't delete the followers we just created!
 			{
 				for (c = 0; c < MAXPLAYERS; c++)
@@ -9906,7 +9988,11 @@ void handleMainMenu(bool mode)
 			}
 
 			list_FreeAll(&removedEntities);
-			list_FreeAll(&chestInv);
+
+			for ( c = 0; c < MAXPLAYERS; c++ )
+			{
+				list_FreeAll(&chestInv[c]);
+			}
 
 			// make some messages
 			startMessages();
@@ -10121,11 +10207,14 @@ void handleMainMenu(bool mode)
 			// clean up shopInv
 			if ( multiplayer == CLIENT )
 			{
-				if ( shopInv )
+				for ( x = 0; x < MAXPLAYERS; x++ )
 				{
-					list_FreeAll(shopInv);
-					free(shopInv);
-					shopInv = NULL;
+					if ( shopInv[x] )
+					{
+						list_FreeAll(shopInv[x]);
+						free(shopInv[x]);
+						shopInv[x] = nullptr;
+					}
 				}
 			}
 
@@ -10288,26 +10377,32 @@ void handleMainMenu(bool mode)
 
 			// reset game
 			darkmap = false;
-			appraisal_timer = 0;
-			appraisal_item = 0;
 			multiplayer = 0;
-			shootmode = true;
 			currentlevel = 0;
 			secretlevel = false;
 			clientnum = 0;
 			introstage = 1;
 			intro = true;
-			deinitShapeshiftHotbar();
-			for ( c = 0; c < NUM_HOTBAR_ALTERNATES; ++c )
+
+			for ( int i = 0; i < MAXPLAYERS; ++i )
 			{
-				selected_spell_alternate[c] = NULL;
-				hotbarShapeshiftInit[c] = false;
+				players[i]->inventoryUI.appraisal.timer = 0;
+				players[i]->inventoryUI.appraisal.current_item = 0;
+				players[i]->hud.reset();
+				deinitShapeshiftHotbar(i);
+				for ( c = 0; c < NUM_HOTBAR_ALTERNATES; ++c )
+				{
+					players[i]->hotbar.hotbarShapeshiftInit[c] = false;
+				}
+				players[i]->shootmode = true;
+				players[i]->magic.clearSelectedSpells();
 			}
 			gameModeManager.currentSession.restoreSavedServerFlags();
-			selected_spell = NULL; //So you don't start off with a spell when the game restarts.
-			selected_spell_last_appearance = -1;
 			client_classes[0] = 0;
-			spellcastingAnimationManager_deactivate(&cast_animation);
+			for ( c = 0; c < MAXPLAYERS; c++ )
+			{
+				spellcastingAnimationManager_deactivate(&cast_animation[c]);
+			}
 			SDL_StopTextInput();
 
 			// delete game data clutter
@@ -10317,8 +10412,8 @@ void handleMainMenu(bool mode)
 			for ( c = 0; c < MAXPLAYERS; c++ )
 			{
 				safePacketsReceivedMap[c].clear();
+				players[c]->messageZone.deleteAllNotificationMessages();
 			}
-			deleteAllNotificationMessages();
 			for (c = 0; c < MAXPLAYERS; c++)
 			{
 				stats[c]->freePlayerEquipment();
@@ -10326,7 +10421,10 @@ void handleMainMenu(bool mode)
 				list_FreeAll(&stats[c]->FOLLOWERS);
 			}
 			list_FreeAll(&removedEntities);
-			list_FreeAll(&chestInv);
+			for ( c = 0; c < MAXPLAYERS; c++ )
+			{
+				list_FreeAll(&chestInv[c]);
+			}
 
 			// default player stats
 			for ( c = 0; c < MAXPLAYERS; c++ )
@@ -10340,6 +10438,7 @@ void handleMainMenu(bool mode)
 					client_disconnected[c] = false;
 				}
 				players[c]->entity = nullptr; //TODO: PLAYERSWAP VERIFY. Need to do anything else?
+				players[c]->cleanUpOnEntityRemoval();
 				stats[c]->sex = static_cast<sex_t>(0);
 				stats[c]->appearance = 0;
 				strcpy(stats[c]->name, "");
@@ -10355,10 +10454,13 @@ void handleMainMenu(bool mode)
 			}
 
 			// hack to fix these things from breaking everything...
-			hudarm = NULL;
-			hudweapon = NULL;
-			magicLeftHand = NULL;
-			magicRightHand = NULL;
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				players[i]->hud.arm = nullptr;
+				players[i]->hud.weapon = nullptr;
+				players[i]->hud.magicLeftHand = nullptr;
+				players[i]->hud.magicRightHand = nullptr;
+			}
 
 			// load menu level
 			int menuMapType = 0;
@@ -10716,12 +10818,12 @@ void handleMainMenu(bool mode)
 	if ( creditstage > 0 )
 	{
 		if ( (credittime >= 300 && (creditstage <= 11 || creditstage > 13)) || (credittime >= 180 && creditstage == 12) ||
-		        (credittime >= 480 && creditstage == 13) || mousestatus[SDL_BUTTON_LEFT] || (*inputPressed(joyimpulses[INJOY_MENU_NEXT]) && rebindaction == -1) )
+		        (credittime >= 480 && creditstage == 13) || inputs.bMouseLeft(clientnum) || (inputs.bControllerInputPressed(clientnum, INJOY_MENU_NEXT) && rebindaction == -1) )
 		{
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			if ( rebindaction == -1 )
 			{
-				*inputPressed(joyimpulses[INJOY_MENU_NEXT]) = 0;
+				inputs.controllerClearInput(clientnum, INJOY_MENU_NEXT);
 			}
 			introstage = 4;
 			fadeout = true;
@@ -10846,14 +10948,14 @@ void handleMainMenu(bool mode)
 		pos.h = (((real_t)xres) / backdrop_cursed_bmp->w) * backdrop_cursed_bmp->h;
 		drawImageScaled(backdrop_cursed_bmp, NULL, &pos);
 
-		if ( intromovietime >= 600 || mousestatus[SDL_BUTTON_LEFT] || keystatus[SDL_SCANCODE_ESCAPE] ||
-		        keystatus[SDL_SCANCODE_SPACE] || keystatus[SDL_SCANCODE_RETURN] || (intromovietime >= 120 && intromoviestage == 1) || (*inputPressed(joyimpulses[INJOY_MENU_NEXT]) && rebindaction == -1) )
+		if ( intromovietime >= 600 || inputs.bMouseLeft(clientnum) || keystatus[SDL_SCANCODE_ESCAPE] ||
+		        keystatus[SDL_SCANCODE_SPACE] || keystatus[SDL_SCANCODE_RETURN] || (intromovietime >= 120 && intromoviestage == 1) || (inputs.bControllerInputPressed(clientnum, INJOY_MENU_NEXT) && rebindaction == -1) )
 		{
 			intromovietime = 0;
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			if ( rebindaction == -1 )
 			{
-				*inputPressed(joyimpulses[INJOY_MENU_NEXT]) = 0;
+				inputs.controllerClearInput(clientnum, INJOY_MENU_NEXT);
 			}
 			if ( intromoviestage != 9 )
 			{
@@ -10941,11 +11043,11 @@ void handleMainMenu(bool mode)
 		pos.h = (((real_t)xres) / backdrop_minotaur_bmp->w) * backdrop_minotaur_bmp->h;
 		drawImageScaled(backdrop_minotaur_bmp, NULL, &pos);
 
-		if ( firstendmovietime >= 600 || mousestatus[SDL_BUTTON_LEFT] || keystatus[SDL_SCANCODE_ESCAPE] ||
+		if ( firstendmovietime >= 600 || inputs.bMouseLeft(clientnum) || keystatus[SDL_SCANCODE_ESCAPE] ||
 		        keystatus[SDL_SCANCODE_SPACE] || keystatus[SDL_SCANCODE_RETURN] || (firstendmovietime >= 120 && firstendmoviestage == 1) )
 		{
 			firstendmovietime = 0;
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			if ( firstendmoviestage != 5 )
 			{
 				firstendmoviestage++;
@@ -11019,11 +11121,11 @@ void handleMainMenu(bool mode)
 		pos.h = (((real_t)xres) / backdrop_minotaur_bmp->w) * backdrop_minotaur_bmp->h;
 		drawImageScaled(backdrop_minotaur_bmp, NULL, &pos);
 
-		if ( secondendmovietime >= 600 || mousestatus[SDL_BUTTON_LEFT] || keystatus[SDL_SCANCODE_ESCAPE] ||
+		if ( secondendmovietime >= 600 || inputs.bMouseLeft(clientnum) || keystatus[SDL_SCANCODE_ESCAPE] ||
 		        keystatus[SDL_SCANCODE_SPACE] || keystatus[SDL_SCANCODE_RETURN] || (secondendmovietime >= 120 && secondendmoviestage == 1) )
 		{
 			secondendmovietime = 0;
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			if ( secondendmoviestage != 7 )
 			{
 				secondendmoviestage++;
@@ -11112,11 +11214,11 @@ void handleMainMenu(bool mode)
 		drawRect(&pos, 0, 255);
 		drawImageScaled(backdrop_minotaur_bmp, NULL, &pos);
 
-		if ( thirdendmovietime >= 600 || mousestatus[SDL_BUTTON_LEFT] || keystatus[SDL_SCANCODE_ESCAPE] ||
+		if ( thirdendmovietime >= 600 || inputs.bMouseLeft(clientnum) || keystatus[SDL_SCANCODE_ESCAPE] ||
 			keystatus[SDL_SCANCODE_SPACE] || keystatus[SDL_SCANCODE_RETURN] || (thirdendmovietime >= 120 && thirdendmoviestage == 1) )
 		{
 			thirdendmovietime = 0;
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			if ( thirdendmoviestage < thirdEndNumLines )
 			{
 				thirdendmoviestage++;
@@ -11223,7 +11325,7 @@ void handleMainMenu(bool mode)
 		drawImageScaled(backdrop_blessed_bmp, NULL, &pos);
 
 		if ( fourthendmovietime >= 600 
-			|| (mousestatus[SDL_BUTTON_LEFT] 
+			|| (inputs.bMouseLeft(clientnum) 
 				&& fourthendmoviestage < 10 
 				&& fourthendmoviestage != 10 
 				&& fourthendmoviestage != 5
@@ -11237,7 +11339,7 @@ void handleMainMenu(bool mode)
 			)
 		{
 			fourthendmovietime = 0;
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			if ( fourthendmoviestage < fourthEndNumLines )
 			{
 				fourthendmoviestage++;
@@ -11410,11 +11512,11 @@ void handleMainMenu(bool mode)
 		drawRect(&pos, 0, 255);
 		drawImageScaled(backdrop_minotaur_bmp, NULL, &pos);
 
-		if ( DLCendmovieStageAndTime[movieType][MOVIE_TIME] >= 600 || mousestatus[SDL_BUTTON_LEFT] || keystatus[SDL_SCANCODE_ESCAPE] ||
+		if ( DLCendmovieStageAndTime[movieType][MOVIE_TIME] >= 600 || inputs.bMouseLeft(clientnum) || keystatus[SDL_SCANCODE_ESCAPE] ||
 			keystatus[SDL_SCANCODE_SPACE] || keystatus[SDL_SCANCODE_RETURN] || (DLCendmovieStageAndTime[movieType][MOVIE_TIME] >= 120 && DLCendmovieStageAndTime[movieType][MOVIE_STAGE] == 1) )
 		{
 			DLCendmovieStageAndTime[movieType][MOVIE_TIME] = 0;
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			if ( DLCendmovieStageAndTime[movieType][MOVIE_STAGE] < DLCendmovieNumLines[movieType] )
 			{
 				DLCendmovieStageAndTime[movieType][MOVIE_STAGE]++;
@@ -11596,7 +11698,7 @@ void handleMainMenu(bool mode)
 		drawImageScaled(backdrop_blessed_bmp, NULL, &pos);
 
 		if ( DLCendmovieStageAndTime[movieType][MOVIE_TIME] >= 600
-			|| (mousestatus[SDL_BUTTON_LEFT]
+			|| (inputs.bMouseLeft(clientnum)
 				&& DLCendmovieStageAndTime[movieType][MOVIE_STAGE] < 10
 				&& DLCendmovieStageAndTime[movieType][MOVIE_STAGE] != 10
 				&& DLCendmovieStageAndTime[movieType][MOVIE_STAGE] != 5
@@ -11610,7 +11712,7 @@ void handleMainMenu(bool mode)
 			)
 		{
 			DLCendmovieStageAndTime[movieType][MOVIE_TIME] = 0;
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			if ( DLCendmovieStageAndTime[movieType][MOVIE_STAGE] < DLCendmovieNumLines[movieType] )
 			{
 				DLCendmovieStageAndTime[movieType][MOVIE_STAGE]++;
@@ -11849,7 +11951,11 @@ void openGameoverWindow()
 
 	scoreDeconstructor((void*)score);
 
-	shootmode = false;
+	for ( int i = 0; i < MAXPLAYERS; ++i )
+	{
+		players[i]->shootmode = false;
+	}
+
 	if ( multiplayer == SINGLE )
 	{
 		strcpy(subtext, language[1133]);
@@ -11869,10 +11975,17 @@ void openGameoverWindow()
 		}
 
 		// identify all inventory items
-		for ( node = stats[clientnum]->inventory.first; node != NULL; node = node->next )
+		for ( int i = 0; i < MAXPLAYERS; ++i )
 		{
-			Item* item = (Item*)node->element;
-			item->identified = true;
+			if ( !players[i]->isLocalPlayer() )
+			{
+				continue;
+			}
+			for ( node = stats[i]->inventory.first; node != NULL; node = node->next )
+			{
+				Item* item = (Item*)node->element;
+				item->identified = true;
+			}
 		}
 
 		// Restart
@@ -11968,8 +12081,6 @@ void getResolutionList()
 	int numdisplays = SDL_GetNumVideoDisplays();
 	int nummodes = SDL_GetNumDisplayModes(0);
 	int im;
-	int c;
-
 	printlog("display count: %d.\n", numdisplays);
 	printlog("display mode count: %d.\n", nummodes);
 
@@ -12171,7 +12282,7 @@ void openSettingsWindow()
 	settings_disable_messages = disable_messages;
 	settings_right_click_protect = right_click_protect;
 	settings_auto_appraise_new_items = auto_appraise_new_items;
-	settings_lock_right_sidebar = lock_right_sidebar;
+	settings_lock_right_sidebar = players[clientnum]->characterSheet.lock_right_sidebar;
 	settings_show_game_timer_always = show_game_timer_always;
 
 	settings_gamepad_leftx_invert = gamepad_leftx_invert;
@@ -12968,8 +13079,6 @@ Uint32 charcreation_ticks = 0;
 // move player forward through creation dialogue
 void buttonContinue(button_t* my)
 {
-	button_t* button;
-
 	if ( ticks - charcreation_ticks < TICKS_PER_SECOND / 10 )
 	{
 		return;
@@ -12987,7 +13096,18 @@ void buttonContinue(button_t* my)
 	}
 	if ( charcreation_step == 4 )
 	{
-		inputstr = stats[0]->name;
+		if (inputstr != stats[0]->name)
+		{
+			inputstr = stats[0]->name;
+#ifdef NINTENDO
+			auto result = nxKeyboard("Enter your character's name");
+			if (result.success)
+			{
+				strncpy(inputstr, result.str.c_str(), 21);
+				inputstr[21] = '\0';
+			}
+#endif
+		}
 		SDL_StartTextInput();
 		inputlen = 22;
 	}
@@ -13055,6 +13175,7 @@ void buttonContinue(button_t* my)
 			strcpy(subtext, language[1447]);
 
 			// close button
+			button_t* button = nullptr;
 			button = newButton();
 			strcpy(button->label, "x");
 			button->x = subx2 - 20;
@@ -14097,7 +14218,7 @@ void applySettings()
 	disable_messages = settings_disable_messages;
 	right_click_protect = settings_right_click_protect;
 	auto_appraise_new_items = settings_auto_appraise_new_items;
-	lock_right_sidebar = settings_lock_right_sidebar;
+	players[clientnum]->characterSheet.lock_right_sidebar = settings_lock_right_sidebar;
 	show_game_timer_always = settings_show_game_timer_always;
 
 	gamepad_leftx_invert = settings_gamepad_leftx_invert;
@@ -14152,9 +14273,9 @@ void applySettings()
 
 void openConfirmResolutionWindow()
 {
-	mousestatus[SDL_BUTTON_LEFT] = 0;
+	inputs.mouseClearLeft(clientnum);
 	keystatus[SDL_SCANCODE_RETURN] = 0;
-	*inputPressed(joyimpulses[INJOY_MENU_NEXT]) = 0;
+	inputs.controllerClearInput(clientnum, INJOY_MENU_NEXT);
 	playSound(139, 64);
 
 	//Create confirmation window
@@ -14560,6 +14681,10 @@ void buttonDeleteCurrentScore(button_t* my)
 void doSlider(int x, int y, int dots, int minvalue, int maxvalue, int increment, int* var, SDL_Surface* slider_font, int slider_font_char_width)
 {
 	int c;
+	Sint32 mousex = inputs.getMouse(clientnum, Inputs::MouseInputs::X);
+	Sint32 mousey = inputs.getMouse(clientnum, Inputs::MouseInputs::Y);
+	Sint32 omousex = inputs.getMouse(clientnum, Inputs::MouseInputs::OX);
+	Sint32 omousey = inputs.getMouse(clientnum, Inputs::MouseInputs::OY);
 
 	// build bar
 	strcpy(tempstr, "| ");
@@ -14573,7 +14698,7 @@ void doSlider(int x, int y, int dots, int minvalue, int maxvalue, int increment,
 	// control
 	int range = maxvalue - minvalue;
 	int sliderLength = ((strlen(tempstr) - 4) * (slider_font->w / slider_font_char_width));
-	if ( mousestatus[SDL_BUTTON_LEFT] )
+	if ( inputs.bMouseLeft(clientnum) )
 	{
 		if ( omousex >= x && omousex < x + sliderLength + (slider_font->w / slider_font_char_width) )
 		{
@@ -14601,6 +14726,10 @@ void doSlider(int x, int y, int dots, int minvalue, int maxvalue, int increment,
 void doSliderF(int x, int y, int dots, real_t minvalue, real_t maxvalue, real_t increment, real_t* var)
 {
 	int c;
+	Sint32 mousex = inputs.getMouse(clientnum, Inputs::MouseInputs::X);
+	Sint32 mousey = inputs.getMouse(clientnum, Inputs::MouseInputs::Y);
+	Sint32 omousex = inputs.getMouse(clientnum, Inputs::MouseInputs::OX);
+	Sint32 omousey = inputs.getMouse(clientnum, Inputs::MouseInputs::OY);
 
 	// build bar
 	strcpy(tempstr, "| ");
@@ -14614,7 +14743,7 @@ void doSliderF(int x, int y, int dots, real_t minvalue, real_t maxvalue, real_t 
 	// control
 	real_t range = maxvalue - minvalue;
 	int sliderLength = ((strlen(tempstr) - 6) * (SLIDERFONT->w / 16));
-	if ( mousestatus[SDL_BUTTON_LEFT] )
+	if ( inputs.bMouseLeft(clientnum) )
 	{
 		if ( omousex >= x && omousex < x + sliderLength + (SLIDERFONT->w / 16) )
 		{
@@ -15663,6 +15792,7 @@ void buttonRandomName(button_t* my)
 		return;
 	}
 	std::string name;
+#ifndef NINTENDO
 	try
 	{
 		name = randomEntryFromVector(*names);
@@ -15677,6 +15807,9 @@ void buttonRandomName(button_t* my)
 		printlog("Error: Failed to choose random name.");
 		return;
 	}
+#else
+	name = randomEntryFromVector(*names);
+#endif
 
 	strncpy(inputstr, name.c_str(), std::min<size_t>(name.length(), inputlen));
 	inputstr[std::min<size_t>(name.length(), inputlen)] = '\0';
@@ -16474,10 +16607,10 @@ void gamemodsDrawWorkshopItemTagToggle(std::string tagname, int x, int y)
 	{
 		printText.append(": [ ]");
 	}
-	if ( mouseInBounds(x, x + printText.size() * TTF12_WIDTH, y, y + TTF12_HEIGHT) )
+	if ( mouseInBounds(clientnum, x, x + printText.size() * TTF12_WIDTH, y, y + TTF12_HEIGHT) )
 	{
 		ttfPrintTextColor(ttf12, x, y, SDL_MapRGBA(mainsurface->format, 128, 128, 128, 255), true, printText.c_str());
-		if ( mousestatus[SDL_BUTTON_LEFT] )
+		if ( inputs.bMouseLeft(clientnum) )
 		{
 			playSound(139, 64);
 			if ( foundTag )
@@ -16488,7 +16621,7 @@ void gamemodsDrawWorkshopItemTagToggle(std::string tagname, int x, int y)
 			{
 				g_SteamWorkshop->workshopItemTags.push_back(tagname);
 			}
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 		}
 	}
 	else
@@ -16655,13 +16788,13 @@ bool gamemodsIsClientLoadOrderMatchingHost(std::vector<std::string> serverModLis
 bool gamemodsDrawClickableButton(int padx, int pady, int padw, int padh, Uint32 btnColor, std::string btnText, int action)
 {
 	bool clicked = false;
-	if ( mouseInBounds(padx, padx + padw, pady - 4, pady + padh) )
+	if ( mouseInBounds(clientnum, padx, padx + padw, pady - 4, pady + padh) )
 	{
 		drawDepressed(padx, pady - 4, padx + padw, pady + padh);
-		if ( mousestatus[SDL_BUTTON_LEFT] )
+		if ( inputs.bMouseLeft(clientnum) )
 		{
 			playSound(139, 64);
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			clicked = true;
 		}
 	}
@@ -16792,7 +16925,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 		{
 			// print a loading message
 			drawClearBuffers();
-			TTF_SizeUTF8(ttf16, language[2989], &w, &h);
+			getSizeOfText(ttf16, language[2989], &w, &h);
 			ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[2989]);
 			GO_SwapBuffers(screen);
 			physfsModelIndexUpdate(modelsIndexUpdateStart, modelsIndexUpdateEnd, true);
@@ -16806,7 +16939,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 		{
 			// print a loading message
 			drawClearBuffers();
-			TTF_SizeUTF8(ttf16, language[2987], &w, &h);
+			getSizeOfText(ttf16, language[2987], &w, &h);
 			ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[2987]);
 			GO_SwapBuffers(screen);
 			physfsReloadSounds(true);
@@ -16818,7 +16951,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 	{
 		// print a loading message
 		drawClearBuffers();
-		TTF_SizeUTF8(ttf16, language[3017], &w, &h);
+		getSizeOfText(ttf16, language[3017], &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3017]);
 		GO_SwapBuffers(screen);
 		physfsReloadTiles(false);
@@ -16829,7 +16962,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 	{
 		// print a loading message
 		drawClearBuffers();
-		TTF_SizeUTF8(ttf16, language[3015], &w, &h);
+		getSizeOfText(ttf16, language[3015], &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3015]);
 		GO_SwapBuffers(screen);
 		physfsReloadSprites(false);
@@ -16840,7 +16973,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 	{
 		// print a loading message
 		drawClearBuffers();
-		TTF_SizeUTF8(ttf16, language[2991], &w, &h);
+		getSizeOfText(ttf16, language[2991], &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[2991]);
 		GO_SwapBuffers(screen);
 		physfsReloadBooks();
@@ -16853,7 +16986,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 	{
 		// print a loading message
 		drawClearBuffers();
-		TTF_SizeUTF8(ttf16, language[2993], &w, &h);
+		getSizeOfText(ttf16, language[2993], &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[2993]);
 		GO_SwapBuffers(screen);
 		bool reloadIntroMusic = false;
@@ -16872,7 +17005,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 	{
 		// print a loading message
 		drawClearBuffers();
-		TTF_SizeUTF8(ttf16, language[3004], &w, &h);
+		getSizeOfText(ttf16, language[3004], &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3004]);
 		GO_SwapBuffers(screen);
 		if ( reloadLanguage() != 0 )
@@ -16890,7 +17023,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 	{
 		// print a loading message
 		drawClearBuffers();
-		TTF_SizeUTF8(ttf16, language[3008], &w, &h);
+		getSizeOfText(ttf16, language[3008], &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3008]);
 		GO_SwapBuffers(screen);
 		physfsReloadItemsTxt();
@@ -16901,7 +17034,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 	{
 		// print a loading message
 		drawClearBuffers();
-		TTF_SizeUTF8(ttf16, language[3006], &w, &h);
+		getSizeOfText(ttf16, language[3006], &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3006]);
 		GO_SwapBuffers(screen);
 		physfsReloadItemSprites(false);
@@ -16918,7 +17051,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 	{
 		// print a loading message
 		drawClearBuffers();
-		TTF_SizeUTF8(ttf16, language[3013], &w, &h);
+		getSizeOfText(ttf16, language[3013], &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3013]);
 		GO_SwapBuffers(screen);
 		physfsReloadMonsterLimbFiles();
@@ -16929,7 +17062,7 @@ void buttonGamemodsStartModdedGame(button_t* my)
 	{
 		// print a loading message
 		drawClearBuffers();
-		TTF_SizeUTF8(ttf16, language[3015], &w, &h);
+		getSizeOfText(ttf16, language[3015], &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[3015]);
 		GO_SwapBuffers(screen);
 		physfsReloadSystemImages();
@@ -17108,13 +17241,13 @@ void gamemodsWindowClearVariables()
 bool drawClickableButton(int padx, int pady, int padw, int padh, Uint32 btnColor)
 {
 	bool clicked = false;
-	if ( mouseInBounds(padx, padx + padw, pady - 4, pady + padh) )
+	if ( mouseInBounds(clientnum, padx, padx + padw, pady - 4, pady + padh) )
 	{
 		drawDepressed(padx, pady - 4, padx + padw, pady + padh);
-		if ( mousestatus[SDL_BUTTON_LEFT] )
+		if ( inputs.bMouseLeft(clientnum) )
 		{
 			playSound(139, 64);
-			mousestatus[SDL_BUTTON_LEFT] = 0;
+			inputs.mouseClearLeft(clientnum);
 			clicked = true;
 		}
 	}
@@ -17202,15 +17335,15 @@ void windowSerialResult(int success)
 		}
 
 		// open the serial file
-		FILE* fp = nullptr;
-		if ( (fp = fopen(path, "wb")) == NULL )
+		File* fp = nullptr;
+		if ( (fp = FileIO::open(path, "wb")) == NULL )
 		{
 			printlog("ERROR: failed to save license file!\n");
 		}
 		else
 		{
-			fwrite(serialInputText, sizeof(char), strlen(serialInputText), fp); // write out serial to file.
-			fclose(fp);
+			fp->write(serialInputText, sizeof(char), strlen(serialInputText));
+			FileIO::close(fp);
 		}
 	}
 	buttonCloseSubwindow(nullptr);

@@ -24,7 +24,6 @@ See LICENSE for details.
 
 void initShadow(Entity* my, Stat* myStats)
 {
-	int c;
 	node_t* node;
 	my->monsterShadowDontChangeName = 0; //By default, it does.
 	if ( myStats && strcmp(myStats->name, "") != 0 )
@@ -1490,7 +1489,7 @@ void Entity::shadowSpecialAbility(bool initialMimic)
 				continue;
 			}
 
-			spell_t *spell = getSpellFromItem(item); //Do not free or delete this.
+			spell_t *spell = getSpellFromItem(target->skill[2], item); //Do not free or delete this.
 			if ( !spell )
 			{
 				continue;

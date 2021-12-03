@@ -173,8 +173,9 @@ void Entity::actFurniture()
 {
 	if ( !furnitureInit )
 	{
+		this->createWorldUITooltip();
 		furnitureInit = 1;
-		if ( furnitureType == FURNITURE_TABLE || FURNITURE_BUNKBED || FURNITURE_BED || FURNITURE_PODIUM )
+		if ( furnitureType == FURNITURE_TABLE || furnitureType == FURNITURE_BUNKBED || furnitureType == FURNITURE_BED || furnitureType == FURNITURE_PODIUM )
 		{
 			furnitureHealth = 15 + rand() % 5;
 		}
@@ -183,6 +184,7 @@ void Entity::actFurniture()
 			furnitureHealth = 4 + rand() % 4;
 		}
 		furnitureMaxHealth = furnitureHealth;
+		furnitureOldHealth = furnitureHealth;
 		flags[BURNABLE] = true;
 	}
 	else
@@ -197,6 +199,8 @@ void Entity::actFurniture()
 					furnitureHealth--;
 				}
 			}
+
+			furnitureOldHealth = furnitureHealth;
 
 			// furniture mortality :p
 			if ( furnitureHealth <= 0 )
@@ -238,7 +242,7 @@ void Entity::actFurniture()
 			int i;
 			for (i = 0; i < MAXPLAYERS; i++)
 			{
-				if ( (i == 0 && selectedEntity == this) || (client_selected[i] == this) )
+				if ( (i == 0 && selectedEntity[0] == this) || (client_selected[i] == this) || (splitscreen && selectedEntity[i] == this) )
 				{
 					if (inrange[i])
 					{
@@ -287,6 +291,12 @@ void actMCaxe(Entity* my)
 	{
 		my->yaw -= PI * 2;
 	}
+
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
+
 	if ( !MCAXE_USED )
 	{
 		if ( multiplayer != CLIENT )
@@ -295,7 +305,7 @@ void actMCaxe(Entity* my)
 			int i;
 			for (i = 0; i < MAXPLAYERS; i++)
 			{
-				if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+				if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 				{
 					if (inrange[i])
 					{
@@ -497,6 +507,10 @@ void actFloorDecoration(Entity* my)
 	{
 		my->flags[PASSABLE] = true;
 	}
+	if ( my->ticks == 1 && !my->flags[UNCLICKABLE] )
+	{
+		my->createWorldUITooltip();
+	}
 
 	if ( multiplayer == CLIENT )
 	{
@@ -513,7 +527,7 @@ void actFloorDecoration(Entity* my)
 	int i;
 	for ( i = 0; i < MAXPLAYERS; i++ )
 	{
-		if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+		if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 		{
 			if ( inrange[i] )
 			{
@@ -966,7 +980,7 @@ void TextSourceScript::handleTextSourceScript(Entity& src, std::string input)
 				{
 					Stat* stats = entity->getStats();
 					int player = entity->skill[2];
-					if ( player == 0 )
+					if ( player >= 0 && players[player]->isLocalPlayer() )
 					{
 						playerClearInventory(true);
 					}
@@ -1030,7 +1044,10 @@ void TextSourceScript::handleTextSourceScript(Entity& src, std::string input)
 				{
 					for ( int c = 1; c < MAXPLAYERS; ++c )
 					{
-						updateClientInformation(c, false, false, TextSourceScript::CLIENT_UPDATE_CLASS);
+						if ( !players[c]->isLocalPlayer() )
+						{
+							updateClientInformation(c, false, false, TextSourceScript::CLIENT_UPDATE_CLASS);
+						}
 					}
 				}
 			}
@@ -1133,7 +1150,7 @@ void TextSourceScript::handleTextSourceScript(Entity& src, std::string input)
 					if ( stats[player] && !client_disconnected[player] )
 					{
 						stats[player]->HUNGER = std::min(result, 2000);
-						if ( player != clientnum )
+						if ( !players[player]->isLocalPlayer() )
 						{
 							updateClientInformation(player, false, false, TextSourceScript::CLIENT_UPDATE_HUNGER);
 						}
@@ -2073,7 +2090,10 @@ void TextSourceScript::handleTextSourceScript(Entity& src, std::string input)
 	{
 		for ( int c = 1; c < MAXPLAYERS; ++c )
 		{
-			updateClientInformation(c, false, false, TextSourceScript::CLIENT_UPDATE_ALL);
+			if ( !players[c]->isLocalPlayer() )
+			{
+				updateClientInformation(c, false, false, TextSourceScript::CLIENT_UPDATE_ALL);
+			}
 		}
 	}
 	printlog("[SCRIPT]: Finished running.");
@@ -2372,20 +2392,19 @@ void TextSourceScript::updateClientInformation(int player, bool clearInventory, 
 
 void TextSourceScript::playerClearInventory(bool clearStats)
 {
-	deinitShapeshiftHotbar();
+	players[clientnum]->hud.reset();
+	deinitShapeshiftHotbar(clientnum);
 	for ( int c = 0; c < NUM_HOTBAR_ALTERNATES; ++c )
 	{
-		selected_spell_alternate[c] = NULL;
-		hotbarShapeshiftInit[c] = false;
+		players[clientnum]->hotbar.hotbarShapeshiftInit[c] = false;
 	}
-	selected_spell = NULL; //So you don't start off with a spell when the game restarts.
-	selected_spell_last_appearance = -1;
-	spellcastingAnimationManager_deactivate(&cast_animation);
+	players[clientnum]->magic.clearSelectedSpells(); //So you don't start off with a spell when the game restarts.
+	spellcastingAnimationManager_deactivate(&cast_animation[clientnum]);
 	stats[clientnum]->freePlayerEquipment();
 	list_FreeAll(&stats[clientnum]->inventory);
-	shootmode = true;
-	appraisal_timer = 0;
-	appraisal_item = 0;
+	players[clientnum]->shootmode = true;
+	players[clientnum]->inventoryUI.appraisal.timer = 0;
+	players[clientnum]->inventoryUI.appraisal.current_item = 0;
 
 	if ( clearStats )
 	{

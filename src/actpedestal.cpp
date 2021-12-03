@@ -72,6 +72,11 @@ void Entity::actPedestalBase()
 		light = lightSphereShadow(x / 16, y / 16, 3, 255);
 	}
 
+	if ( ticks == 1 )
+	{
+		this->createWorldUITooltip();
+	}
+
 	if ( pedestalInGround )
 	{
 		if ( pedestalInit == 0 )
@@ -116,8 +121,10 @@ void Entity::actPedestalBase()
 			orbEntity->vel_z = vel_z;
 			orbEntity->z += orbEntity->vel_z;
 			// shake camera if in range.
-			for (int c = 0; c < MAXPLAYERS; ++c) {
-				if (client_disconnected[c] || !players[c]) {
+			for (int c = 0; c < MAXPLAYERS; ++c) 
+			{
+				if ( !players[c]->isLocalPlayer() || !players[c]->isLocalPlayerAlive() ) 
+				{
 					continue;
 				}
 				auto& player = players[c];
@@ -254,7 +261,7 @@ void Entity::actPedestalBase()
 	// handle player interaction
 	for ( int i = 0; i < MAXPLAYERS; i++ )
 	{
-		if ( ((i == 0 && selectedEntity == this) || (client_selected[i] == this)))
+		if ( (i == 0 && selectedEntity[0] == this) || (client_selected[i] == this) || (splitscreen && selectedEntity[i] == this) )
 		{
 			if ( inrange[i] )
 			{
@@ -354,7 +361,7 @@ void Entity::actPedestalOrb()
 		{
 			for ( int i = 0; i < MAXPLAYERS; i++ )
 			{
-				if ( ((i == 0 && selectedEntity == this) || (client_selected[i] == this)) )
+				if ( (i == 0 && selectedEntity[0] == this) || (client_selected[i] == this) || (splitscreen && selectedEntity[i] == this) )
 				{
 					if ( inrange[i] )
 					{

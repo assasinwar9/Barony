@@ -227,6 +227,32 @@ int power(int a, int b)
 
 /*-------------------------------------------------------------------------------
 
+messageLocalPlayers
+
+Support function, messages all local players with the message "message"
+
+-------------------------------------------------------------------------------*/
+
+void messageLocalPlayers(char const * const message, ...)
+{
+	char str[Player::MessageZone_t::ADD_MESSAGE_BUFFER_LENGTH] = { 0 };
+
+	va_list argptr;
+	va_start(argptr, message);
+	vsnprintf(str, Player::MessageZone_t::ADD_MESSAGE_BUFFER_LENGTH - 1, message, argptr);
+	va_end(argptr);
+
+	for ( int player = 0; player < MAXPLAYERS; ++player )
+	{
+		if ( players[player]->isLocalPlayer() )
+		{
+			messagePlayer(player, str);
+		}
+	}
+}
+
+/*-------------------------------------------------------------------------------
+
 	messagePlayer
 
 	Support function, messages the player number given by "player" with the
@@ -240,14 +266,41 @@ void messagePlayer(int player, char const * const message, ...)
 	{
 		return;
 	}
-	char str[256] = { 0 };
+	char str[Player::MessageZone_t::ADD_MESSAGE_BUFFER_LENGTH] = { 0 };
 
 	va_list argptr;
 	va_start( argptr, message );
-	vsnprintf( str, 255, message, argptr );
+	vsnprintf( str, Player::MessageZone_t::ADD_MESSAGE_BUFFER_LENGTH - 1, message, argptr );
 	va_end( argptr );
 
 	messagePlayerColor(player, 0xFFFFFFFF, str);
+}
+
+/*-------------------------------------------------------------------------------
+
+messageLocalPlayersColor
+
+Messages all local players with the message "message"
+and color "color"
+
+-------------------------------------------------------------------------------*/
+
+void messageLocalPlayersColor(Uint32 color, char const * const message, ...)
+{
+	char str[Player::MessageZone_t::ADD_MESSAGE_BUFFER_LENGTH] = { 0 };
+
+	va_list argptr;
+	va_start(argptr, message);
+	vsnprintf(str, Player::MessageZone_t::ADD_MESSAGE_BUFFER_LENGTH - 1, message, argptr);
+	va_end(argptr);
+
+	for ( int player = 0; player < MAXPLAYERS; ++player )
+	{
+		if ( players[player]->isLocalPlayer() )
+		{
+			messagePlayerColor(player, color, str);
+		}
+	}
 }
 
 /*-------------------------------------------------------------------------------
@@ -261,7 +314,7 @@ void messagePlayer(int player, char const * const message, ...)
 
 void messagePlayerColor(int player, Uint32 color, char const * const message, ...)
 {
-	char str[ADD_MESSAGE_BUFFER_LENGTH] = { 0 };
+	char str[Player::MessageZone_t::ADD_MESSAGE_BUFFER_LENGTH] = { 0 };
 	va_list argptr;
 
 	if ( message == NULL )
@@ -275,7 +328,7 @@ void messagePlayerColor(int player, Uint32 color, char const * const message, ..
 
 	// format the content
 	va_start( argptr, message );
-	vsnprintf( str, 255, message, argptr );
+	vsnprintf( str, Player::MessageZone_t::ADD_MESSAGE_BUFFER_LENGTH - 1, message, argptr );
 	va_end( argptr );
 
 	// fixes crash when reading config at start of game
@@ -285,10 +338,10 @@ void messagePlayerColor(int player, Uint32 color, char const * const message, ..
 		return;
 	}
 
-	if ( player == clientnum )
+	if ( players[player]->isLocalPlayer() )
 	{
 		printlog("%s\n", str);
-		strncpy(str, messageSanitizePercentSign(str, nullptr).c_str(), ADD_MESSAGE_BUFFER_LENGTH - 1);
+		strncpy(str, messageSanitizePercentSign(str, nullptr).c_str(), Player::MessageZone_t::ADD_MESSAGE_BUFFER_LENGTH - 1);
 		newString(&messages, color, str);
 		while ( list_Size(&messages) > MESSAGE_LIST_SIZE_CAP )
 		{
@@ -296,10 +349,10 @@ void messagePlayerColor(int player, Uint32 color, char const * const message, ..
 		}
 		if ( !disable_messages )
 		{
-			addMessage(color, str);
+			players[player]->messageZone.addMessage(color, str);
 		}
 	}
-	else if ( multiplayer == SERVER && player > 0 )
+	else if ( multiplayer == SERVER && !players[player]->isLocalPlayer() )
 	{
 		strcpy((char*)net_packet->data, "MSGS");
 		SDLNet_Write32(color, &net_packet->data[4]);
@@ -342,7 +395,7 @@ void sendEntityTCP(Entity* entity, int c)
 	{
 		return;
 	}
-	if ( client_disconnected[c] == true )
+	if ( client_disconnected[c] == true || players[c]->isLocalPlayer() )
 	{
 		return;
 	}
@@ -407,7 +460,7 @@ void sendEntityUDP(Entity* entity, int c, bool guarantee)
 	{
 		return;
 	}
-	if ( client_disconnected[c] == true )
+	if ( client_disconnected[c] == true || players[c]->isLocalPlayer() )
 	{
 		return;
 	}
@@ -477,7 +530,7 @@ void sendEntityUDP(Entity* entity, int c, bool guarantee)
 
 void sendMapSeedTCP(int c)
 {
-	if ( client_disconnected[c] == true )
+	if ( client_disconnected[c] == true || players[c]->isLocalPlayer() )
 	{
 		return;
 	}
@@ -511,7 +564,7 @@ void sendMapTCP(int c)
 {
 	Uint32 x, y, z;
 
-	if ( client_disconnected[c] == true )
+	if ( client_disconnected[c] == true || players[c]->isLocalPlayer() )
 	{
 		return;
 	}
@@ -560,33 +613,34 @@ void serverUpdateBodypartIDs(Entity* entity)
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "BDYI");
-			SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
-			node_t* node;
-			int i;
-			for ( i = 0, node = entity->children.first; node != NULL; node = node->next, i++ )
-			{
-				if ( i < 1 || (i < 2 && entity->behavior == &actMonster) )
-				{
-					continue;
-				}
-				Entity* tempEntity = (Entity*)node->element;
-				if ( entity->behavior == &actMonster )
-				{
-					SDLNet_Write32(tempEntity->getUID(), &net_packet->data[8 + 4 * (i - 2)]);
-				}
-				else
-				{
-					SDLNet_Write32(tempEntity->getUID(), &net_packet->data[8 + 4 * (i - 1)]);
-				}
-			}
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 8 + (list_Size(&entity->children) - 2) * 4;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "BDYI");
+		SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
+		node_t* node;
+		int i;
+		for ( i = 0, node = entity->children.first; node != NULL; node = node->next, i++ )
+		{
+			if ( i < 1 || (i < 2 && entity->behavior == &actMonster) )
+			{
+				continue;
+			}
+			Entity* tempEntity = (Entity*)node->element;
+			if ( entity->behavior == &actMonster )
+			{
+				SDLNet_Write32(tempEntity->getUID(), &net_packet->data[8 + 4 * (i - 2)]);
+			}
+			else
+			{
+				SDLNet_Write32(tempEntity->getUID(), &net_packet->data[8 + 4 * (i - 1)]);
+			}
+		}
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 8 + (list_Size(&entity->children) - 2) * 4;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -611,23 +665,25 @@ void serverUpdateEntityBodypart(Entity* entity, int bodypart)
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "ENTB");
-			SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
-			net_packet->data[8] = bodypart;
-			node_t* node = list_Node(&entity->children, bodypart);
-			if ( node )
-			{
-				Entity* tempEntity = (Entity*)node->element;
-				SDLNet_Write32(tempEntity->sprite, &net_packet->data[9]);
-				net_packet->data[13] = tempEntity->flags[INVISIBLE];
-				net_packet->address.host = net_clients[c - 1].host;
-				net_packet->address.port = net_clients[c - 1].port;
-				net_packet->len = 14;
-				sendPacketSafe(net_sock, -1, net_packet, c - 1);
-			}
+			continue;
 		}
+		strcpy((char*)net_packet->data, "ENTB");
+		SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
+		net_packet->data[8] = bodypart;
+		node_t* node = list_Node(&entity->children, bodypart);
+		if ( !node )
+		{
+			continue;
+		}
+		Entity* tempEntity = (Entity*)node->element;
+		SDLNet_Write32(tempEntity->sprite, &net_packet->data[9]);
+		net_packet->data[13] = tempEntity->flags[INVISIBLE];
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 14;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 	//if ( entity->behavior == &actPlayer )
 	//{
@@ -667,16 +723,17 @@ void serverUpdateEntitySprite(Entity* entity)
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "ENTA");
-			SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
-			SDLNet_Write32(entity->sprite, &net_packet->data[8]);
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 12;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "ENTA");
+		SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
+		SDLNet_Write32(entity->sprite, &net_packet->data[8]);
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 12;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -697,17 +754,18 @@ void serverUpdateEntitySkill(Entity* entity, int skill)
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "ENTS");
-			SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
-			net_packet->data[8] = skill;
-			SDLNet_Write32(entity->skill[skill], &net_packet->data[9]);
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 13;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "ENTS");
+		SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
+		net_packet->data[8] = skill;
+		SDLNet_Write32(entity->skill[skill], &net_packet->data[9]);
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 13;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -732,17 +790,18 @@ void serverUpdateEntityStatFlag(Entity* entity, int flag)
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "ENSF");
-			SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
-			net_packet->data[8] = flag;
-			SDLNet_Write32(entity->getStats()->MISC_FLAGS[flag], &net_packet->data[9]);
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 13;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "ENSF");
+		SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
+		net_packet->data[8] = flag;
+		SDLNet_Write32(entity->getStats()->MISC_FLAGS[flag], &net_packet->data[9]);
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 13;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -763,17 +822,18 @@ void serverUpdateEntityFSkill(Entity* entity, int fskill)
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "ENFS");
-			SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
-			net_packet->data[8] = fskill;
-			SDLNet_Write16(static_cast<Sint16>(entity->fskill[fskill] * 256), &net_packet->data[9]);
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 11;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "ENFS");
+		SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
+		net_packet->data[8] = fskill;
+		SDLNet_Write16(static_cast<Sint16>(entity->fskill[fskill] * 256), &net_packet->data[9]);
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 11;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -794,18 +854,19 @@ void serverSpawnMiscParticles(Entity* entity, int particleType, int particleSpri
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "SPPE");
-			SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
-			net_packet->data[8] = particleType;
-			SDLNet_Write16(particleSprite, &net_packet->data[9]);
-			SDLNet_Write32(optionalUid, &net_packet->data[11]);
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 16;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "SPPE");
+		SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
+		net_packet->data[8] = particleType;
+		SDLNet_Write16(particleSprite, &net_packet->data[9]);
+		SDLNet_Write32(optionalUid, &net_packet->data[11]);
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 16;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -826,19 +887,20 @@ void serverSpawnMiscParticlesAtLocation(Sint16 x, Sint16 y, Sint16 z, int partic
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "SPPL");
-			SDLNet_Write16(x, &net_packet->data[4]);
-			SDLNet_Write16(y, &net_packet->data[6]);
-			SDLNet_Write16(z, &net_packet->data[8]);
-			net_packet->data[10] = particleType;
-			SDLNet_Write16(particleSprite, &net_packet->data[11]);
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 14;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "SPPL");
+		SDLNet_Write16(x, &net_packet->data[4]);
+		SDLNet_Write16(y, &net_packet->data[6]);
+		SDLNet_Write16(z, &net_packet->data[8]);
+		net_packet->data[10] = particleType;
+		SDLNet_Write16(particleSprite, &net_packet->data[11]);
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 14;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -859,17 +921,18 @@ void serverUpdateEntityFlag(Entity* entity, int flag)
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "ENTF");
-			SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
-			net_packet->data[8] = flag;
-			net_packet->data[9] = entity->flags[flag];
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 10;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "ENTF");
+		SDLNet_Write32(entity->getUID(), &net_packet->data[4]);
+		net_packet->data[8] = flag;
+		net_packet->data[9] = entity->flags[flag];
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 10;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -894,7 +957,7 @@ void serverUpdateEffects(int player)
 	{
 		return;
 	}
-	if ( client_disconnected[player] == true )
+	if ( client_disconnected[player] == true || players[player]->isLocalPlayer() )
 	{
 		return;
 	}
@@ -946,7 +1009,7 @@ void serverUpdateHunger(int player)
 	{
 		return;
 	}
-	if ( client_disconnected[player] == true )
+	if ( client_disconnected[player] == true || players[player]->isLocalPlayer() )
 	{
 		return;
 	}
@@ -976,30 +1039,31 @@ void serverUpdatePlayerStats()
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "STAT");
-			Sint32 playerHP = 0;
-			Sint32 playerMP = 0;
-			for ( int i = 0; i < MAXPLAYERS; ++i )
-			{
-				if ( stats[i] )
-				{
-					playerHP = static_cast<Sint16>(stats[i]->MAXHP);
-					playerHP |= static_cast<Sint16>(stats[i]->HP) << 16;
-					playerMP = static_cast<Sint16>(stats[i]->MAXMP);
-					playerMP |= static_cast<Sint16>(stats[i]->MP) << 16;
-				}
-				SDLNet_Write32(playerHP, &net_packet->data[4 + i * 8]); // 4/12/20/28 data
-				SDLNet_Write32(playerMP, &net_packet->data[8 + i * 8]); // 8/16/24/32 data
-				playerHP = 0;
-				playerMP = 0;
-			}
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 4 + 8 * MAXPLAYERS;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "STAT");
+		Sint32 playerHP = 0;
+		Sint32 playerMP = 0;
+		for ( int i = 0; i < MAXPLAYERS; ++i )
+		{
+			if ( stats[i] )
+			{
+				playerHP = static_cast<Sint16>(stats[i]->MAXHP);
+				playerHP |= static_cast<Sint16>(stats[i]->HP) << 16;
+				playerMP = static_cast<Sint16>(stats[i]->MAXMP);
+				playerMP |= static_cast<Sint16>(stats[i]->MP) << 16;
+			}
+			SDLNet_Write32(playerHP, &net_packet->data[4 + i * 8]); // 4/12/20/28 data
+			SDLNet_Write32(playerMP, &net_packet->data[8 + i * 8]); // 8/16/24/32 data
+			playerHP = 0;
+			playerMP = 0;
+		}
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 4 + 8 * MAXPLAYERS;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -1084,7 +1148,7 @@ void serverUpdatePlayerGameplayStats(int player, int gameplayStat, int changeval
 			gameStatistics[gameplayStat] += changeval;
 		}
 	}
-	else
+	else if ( !players[player]->isLocalPlayer() )
 	{
 		strcpy((char*)net_packet->data, "GPST");
 		SDLNet_Write32(gameplayStat, &net_packet->data[4]);
@@ -1103,7 +1167,7 @@ void serverUpdatePlayerConduct(int player, int conduct, int value)
 	{
 		return;
 	}
-	if ( client_disconnected[player] )
+	if ( client_disconnected[player] || players[player]->isLocalPlayer() )
 	{
 		return;
 	}
@@ -1133,23 +1197,24 @@ void serverUpdatePlayerLVL()
 	}
 	for ( c = 1; c < MAXPLAYERS; c++ )
 	{
-		if ( !client_disconnected[c] )
+		if ( client_disconnected[c] || players[c]->isLocalPlayer() )
 		{
-			strcpy((char*)net_packet->data, "UPLV");
-			Sint32 playerLevels = 0;
-			for ( int i = 0; i < MAXPLAYERS; ++i )
-			{
-				if ( stats[i] )
-				{
-					playerLevels |= static_cast<Uint8>(stats[i]->LVL) << (8 * i); // store uint8 in data, highest bits for player 4.
-				}
-			}
-			SDLNet_Write32(playerLevels, &net_packet->data[4]);
-			net_packet->address.host = net_clients[c - 1].host;
-			net_packet->address.port = net_clients[c - 1].port;
-			net_packet->len = 8;
-			sendPacketSafe(net_sock, -1, net_packet, c - 1);
+			continue;
 		}
+		strcpy((char*)net_packet->data, "UPLV");
+		Sint32 playerLevels = 0;
+		for ( int i = 0; i < MAXPLAYERS; ++i )
+		{
+			if ( stats[i] )
+			{
+				playerLevels |= static_cast<Uint8>(stats[i]->LVL) << (8 * i); // store uint8 in data, highest bits for player 4.
+			}
+		}
+		SDLNet_Write32(playerLevels, &net_packet->data[4]);
+		net_packet->address.host = net_clients[c - 1].host;
+		net_packet->address.port = net_clients[c - 1].port;
+		net_packet->len = 8;
+		sendPacketSafe(net_sock, -1, net_packet, c - 1);
 	}
 }
 
@@ -1159,16 +1224,17 @@ void serverRemoveClientFollower(int player, Uint32 uidToRemove)
 	{
 		return;
 	}
-
-	if ( !client_disconnected[player] )
+	if ( client_disconnected[player] || players[player]->isLocalPlayer() )
 	{
-		strcpy((char*)net_packet->data, "LDEL");
-		SDLNet_Write32(uidToRemove, &net_packet->data[4]);
-		net_packet->address.host = net_clients[player - 1].host;
-		net_packet->address.port = net_clients[player - 1].port;
-		net_packet->len = 8;
-		sendPacketSafe(net_sock, -1, net_packet, player - 1);
+		return;
 	}
+
+	strcpy((char*)net_packet->data, "LDEL");
+	SDLNet_Write32(uidToRemove, &net_packet->data[4]);
+	net_packet->address.host = net_clients[player - 1].host;
+	net_packet->address.port = net_clients[player - 1].port;
+	net_packet->len = 8;
+	sendPacketSafe(net_sock, -1, net_packet, player - 1);
 }
 
 void serverSendItemToPickupAndEquip(int player, Item* item)
@@ -1177,23 +1243,24 @@ void serverSendItemToPickupAndEquip(int player, Item* item)
 	{
 		return;
 	}
-
-	if ( !client_disconnected[player] )
+	if ( client_disconnected[player] || players[player]->isLocalPlayer() )
 	{
-		// send the client info on the item it just picked up
-		strcpy((char*)net_packet->data, "ITEQ");
-		SDLNet_Write32((Uint32)item->type, &net_packet->data[4]);
-		SDLNet_Write32((Uint32)item->status, &net_packet->data[8]);
-		SDLNet_Write32((Uint32)item->beatitude, &net_packet->data[12]);
-		SDLNet_Write32((Uint32)item->count, &net_packet->data[16]);
-		SDLNet_Write32((Uint32)item->appearance, &net_packet->data[20]);
-		SDLNet_Write32((Uint32)item->ownerUid, &net_packet->data[24]);
-		net_packet->data[28] = item->identified;
-		net_packet->address.host = net_clients[player - 1].host;
-		net_packet->address.port = net_clients[player - 1].port;
-		net_packet->len = 29;
-		sendPacketSafe(net_sock, -1, net_packet, player - 1);
+		return;
 	}
+
+	// send the client info on the item it just picked up
+	strcpy((char*)net_packet->data, "ITEQ");
+	SDLNet_Write32((Uint32)item->type, &net_packet->data[4]);
+	SDLNet_Write32((Uint32)item->status, &net_packet->data[8]);
+	SDLNet_Write32((Uint32)item->beatitude, &net_packet->data[12]);
+	SDLNet_Write32((Uint32)item->count, &net_packet->data[16]);
+	SDLNet_Write32((Uint32)item->appearance, &net_packet->data[20]);
+	SDLNet_Write32((Uint32)item->ownerUid, &net_packet->data[24]);
+	net_packet->data[28] = item->identified;
+	net_packet->address.host = net_clients[player - 1].host;
+	net_packet->address.port = net_clients[player - 1].port;
+	net_packet->len = 29;
+	sendPacketSafe(net_sock, -1, net_packet, player - 1);
 }
 
 void serverUpdateAllyStat(int player, Uint32 uidToUpdate, int LVL, int HP, int MAXHP, int type)
@@ -1202,20 +1269,21 @@ void serverUpdateAllyStat(int player, Uint32 uidToUpdate, int LVL, int HP, int M
 	{
 		return;
 	}
-
-	if ( !client_disconnected[player] )
+	if ( client_disconnected[player] || players[player]->isLocalPlayer() )
 	{
-		strcpy((char*)net_packet->data, "NPCI");
-		SDLNet_Write32(uidToUpdate, &net_packet->data[4]);
-		net_packet->data[8] = static_cast<Uint8>(LVL);
-		SDLNet_Write16(HP, &net_packet->data[9]);
-		SDLNet_Write16(MAXHP, &net_packet->data[11]);
-		net_packet->data[13] = static_cast<Uint8>(type);
-		net_packet->address.host = net_clients[player - 1].host;
-		net_packet->address.port = net_clients[player - 1].port;
-		net_packet->len = 14;
-		sendPacketSafe(net_sock, -1, net_packet, player - 1);
+		return;
 	}
+
+	strcpy((char*)net_packet->data, "NPCI");
+	SDLNet_Write32(uidToUpdate, &net_packet->data[4]);
+	net_packet->data[8] = static_cast<Uint8>(LVL);
+	SDLNet_Write16(HP, &net_packet->data[9]);
+	SDLNet_Write16(MAXHP, &net_packet->data[11]);
+	net_packet->data[13] = static_cast<Uint8>(type);
+	net_packet->address.host = net_clients[player - 1].host;
+	net_packet->address.port = net_clients[player - 1].port;
+	net_packet->len = 14;
+	sendPacketSafe(net_sock, -1, net_packet, player - 1);
 }
 
 void serverUpdatePlayerSummonStrength(int player)
@@ -1228,21 +1296,22 @@ void serverUpdatePlayerSummonStrength(int player)
 	{
 		return;
 	}
-	
-	if ( !client_disconnected[player] && stats[player] )
+	if ( client_disconnected[player] || !stats[player] || players[player]->isLocalPlayer() )
 	{
-		strcpy((char*)net_packet->data, "SUMS");
-		SDLNet_Write32(stats[player]->playerSummonLVLHP, &net_packet->data[4]);
-		SDLNet_Write32(stats[player]->playerSummonSTRDEXCONINT, &net_packet->data[8]);
-		SDLNet_Write32(stats[player]->playerSummonPERCHR, &net_packet->data[12]);
-		SDLNet_Write32(stats[player]->playerSummon2LVLHP, &net_packet->data[16]);
-		SDLNet_Write32(stats[player]->playerSummon2STRDEXCONINT, &net_packet->data[20]);
-		SDLNet_Write32(stats[player]->playerSummon2PERCHR, &net_packet->data[24]);
-		net_packet->address.host = net_clients[player - 1].host;
-		net_packet->address.port = net_clients[player - 1].port;
-		net_packet->len = 28;
-		sendPacketSafe(net_sock, -1, net_packet, player - 1);
+		return;
 	}
+
+	strcpy((char*)net_packet->data, "SUMS");
+	SDLNet_Write32(stats[player]->playerSummonLVLHP, &net_packet->data[4]);
+	SDLNet_Write32(stats[player]->playerSummonSTRDEXCONINT, &net_packet->data[8]);
+	SDLNet_Write32(stats[player]->playerSummonPERCHR, &net_packet->data[12]);
+	SDLNet_Write32(stats[player]->playerSummon2LVLHP, &net_packet->data[16]);
+	SDLNet_Write32(stats[player]->playerSummon2STRDEXCONINT, &net_packet->data[20]);
+	SDLNet_Write32(stats[player]->playerSummon2PERCHR, &net_packet->data[24]);
+	net_packet->address.host = net_clients[player - 1].host;
+	net_packet->address.port = net_clients[player - 1].port;
+	net_packet->len = 28;
+	sendPacketSafe(net_sock, -1, net_packet, player - 1);
 }
 
 void serverUpdateAllyHP(int player, Uint32 uidToUpdate, int HP, int MAXHP, bool guarantee)
@@ -1255,34 +1324,30 @@ void serverUpdateAllyHP(int player, Uint32 uidToUpdate, int HP, int MAXHP, bool 
 	{
 		return;
 	}
-
-	if ( !client_disconnected[player] )
+	if ( client_disconnected[player] || players[player]->isLocalPlayer() )
 	{
-		strcpy((char*)net_packet->data, "NPCU");
-		SDLNet_Write32(uidToUpdate, &net_packet->data[4]);
-		SDLNet_Write16(HP, &net_packet->data[8]);
-		SDLNet_Write16(MAXHP, &net_packet->data[10]);
-		net_packet->address.host = net_clients[player - 1].host;
-		net_packet->address.port = net_clients[player - 1].port;
-		net_packet->len = 12;
-		if ( !guarantee )
-		{
-			sendPacket(net_sock, -1, net_packet, player - 1);
-		}
-		else
-		{
-			sendPacketSafe(net_sock, -1, net_packet, player - 1);
-		}
+		return;
+	}
+
+	strcpy((char*)net_packet->data, "NPCU");
+	SDLNet_Write32(uidToUpdate, &net_packet->data[4]);
+	SDLNet_Write16(HP, &net_packet->data[8]);
+	SDLNet_Write16(MAXHP, &net_packet->data[10]);
+	net_packet->address.host = net_clients[player - 1].host;
+	net_packet->address.port = net_clients[player - 1].port;
+	net_packet->len = 12;
+	if ( !guarantee )
+	{
+		sendPacket(net_sock, -1, net_packet, player - 1);
+	}
+	else
+	{
+		sendPacketSafe(net_sock, -1, net_packet, player - 1);
 	}
 }
 
 void sendMinimapPing(Uint8 player, Uint8 x, Uint8 y)
 {
-	if ( multiplayer == SINGLE )
-	{
-		return;
-	}
-
 	if ( multiplayer == CLIENT )
 	{
 		// send to host to relay info.
@@ -1298,9 +1363,19 @@ void sendMinimapPing(Uint8 player, Uint8 x, Uint8 y)
 	}
 	else
 	{
-		for ( int c = 1; c < MAXPLAYERS; c++ )
+		for ( int c = 0; c < MAXPLAYERS; c++ )
 		{
-			if ( !client_disconnected[c] )
+			if ( client_disconnected[c] )
+			{
+				continue;
+			}
+			if ( players[c]->isLocalPlayer() )
+			{
+				minimapPingAdd(player, c, MinimapPing(ticks, player, x, y));
+				continue;
+			}
+
+			if ( multiplayer == SERVER )
 			{
 				// send to all clients.
 				strcpy((char*)net_packet->data, "PMAP");
@@ -1782,14 +1857,12 @@ void clientHandlePacket()
 		return;
 	}
 
-	Uint32 x, y;
 	node_t* node;
 	node_t* nextnode;
 	Entity* entity, *entity2;
 	int c = 0;
 	Uint32 i = 0, j;
 	Item* item = NULL;
-	FILE* fp;
 
 #ifdef PACKETINFO
 	char packetinfo[NET_PACKET_SIZE];
@@ -1999,13 +2072,16 @@ void clientHandlePacket()
 					continue;
 				}
 				Entity* tempEntity = (Entity*)childNode->element;
-				if ( entity->behavior == &actMonster )
+				if ( tempEntity )
 				{
-					tempEntity->setUID(SDLNet_Read32(&net_packet->data[8 + 4 * (c - 2)]));
-				}
-				else
-				{
-					tempEntity->setUID(SDLNet_Read32(&net_packet->data[8 + 4 * (c - 1)]));
+					if ( entity->behavior == &actMonster )
+					{
+						tempEntity->setUID(SDLNet_Read32(&net_packet->data[8 + 4 * (c - 2)]));
+					}
+					else
+					{
+						tempEntity->setUID(SDLNet_Read32(&net_packet->data[8 + 4 * (c - 1)]));
+					}
 				}
 			}
 		}
@@ -2082,9 +2158,15 @@ void clientHandlePacket()
 		Entity* entity = uidToEntity(uid);
 		if ( entity )
 		{
-			entity->skill[10] = SDLNet_Read32(&net_packet->data[8]); // item type
-			entity->skill[11] = SDLNet_Read32(&net_packet->data[12]); // status
-			entity->skill[12] = SDLNet_Read32(&net_packet->data[16]); // beatitude
+			Uint32 itemTypeAndIdentified = SDLNet_Read32(&net_packet->data[8]);
+			Uint32 statusBeatitudeQuantityAppearance = SDLNet_Read32(&net_packet->data[12]);
+
+			entity->skill[10] = static_cast<ItemType>((itemTypeAndIdentified >> 16) & 0xFFFF); //type
+			entity->skill[15] = (itemTypeAndIdentified) & 0xFFFF;
+			entity->skill[11] = static_cast<Uint8>((statusBeatitudeQuantityAppearance >> 24) & 0xFF); // status
+			entity->skill[12] = static_cast<Sint8>((statusBeatitudeQuantityAppearance >> 16) & 0xFF); // beatitude
+			entity->skill[13] = static_cast<Uint8>((statusBeatitudeQuantityAppearance >> 8) & 0xFF); // quantity
+			entity->skill[14] = static_cast<Uint8>((statusBeatitudeQuantityAppearance) & 0xFF); // appearance
 			entity->itemReceivedDetailsFromServer = 1;
 		}
 		return;
@@ -2368,7 +2450,7 @@ void clientHandlePacket()
 		}
 		char enemy_name[128] = "";
 		strcpy(enemy_name, (char*)(&net_packet->data[25]));
-		enemyHPDamageBarHandler.addEnemyToList(enemy_hp, enemy_maxhp, oldhp, enemy_bar_color, uid, enemy_name, lowPriorityTick);
+		enemyHPDamageBarHandler[clientnum].addEnemyToList(enemy_hp, enemy_maxhp, oldhp, enemy_bar_color, uid, enemy_name, lowPriorityTick);
 		return;
 	}
 
@@ -2538,6 +2620,7 @@ void clientHandlePacket()
 							}
 						}
 						players[j]->entity = nullptr;
+						players[j]->cleanUpOnEntityRemoval();
 					}
 				}
 				if ( entity->light )
@@ -2633,7 +2716,7 @@ void clientHandlePacket()
 								Item* item = (Item*)spellnode->element;
 								if ( item && itemCategory(item) == SPELL_CAT )
 								{
-									spell_t* spell = getSpellFromItem(item);
+									spell_t* spell = getSpellFromItem(clientnum, item);
 									if ( spell && spell->ID == SPELL_CHARM_MONSTER )
 									{
 										foundCharmSpell = true;
@@ -2717,7 +2800,7 @@ void clientHandlePacket()
 	// damage indicator
 	else if (!strncmp((char*)net_packet->data, "DAMI", 4))
 	{
-		newDamageIndicator(SDLNet_Read32(&net_packet->data[4]), SDLNet_Read32(&net_packet->data[8]));
+		newDamageIndicator(clientnum, SDLNet_Read32(&net_packet->data[4]), SDLNet_Read32(&net_packet->data[8]));
 		return;
 	}
 
@@ -2847,12 +2930,15 @@ void clientHandlePacket()
 			if ( pickedUp && pickedUp->type == BOOMERANG && !stats[clientnum]->weapon && item->ownerUid == players[clientnum]->entity->getUID() )
 			{
 				useItem(pickedUp, clientnum);
-				if ( magicBoomerangHotbarSlot >= 0 )
+
+				auto& hotbar_t = players[clientnum]->hotbar;
+				auto& hotbar = hotbar_t.slots();
+				if ( hotbar_t.magicBoomerangHotbarSlot >= 0 )
 				{
-					hotbar[magicBoomerangHotbarSlot].item = pickedUp->uid;
+					hotbar[hotbar_t.magicBoomerangHotbarSlot].item = pickedUp->uid;
 					for ( int i = 0; i < NUM_HOTBAR_SLOTS; ++i )
 					{
-						if ( i != magicBoomerangHotbarSlot && hotbar[i].item == pickedUp->uid )
+						if ( i != hotbar_t.magicBoomerangHotbarSlot && hotbar[i].item == pickedUp->uid )
 						{
 							hotbar[i].item = 0;
 						}
@@ -2909,9 +2995,9 @@ void clientHandlePacket()
 			return;
 		}
 
-		if ( *armor == selectedItem )
+		if ( *armor == inputs.getUIInteraction(clientnum)->selectedItem )
 		{
-			selectedItem = nullptr;
+			inputs.getUIInteraction(clientnum)->selectedItem = nullptr;
 		}
 
 		if ( (*armor)->count > 1 )
@@ -2943,26 +3029,26 @@ void clientHandlePacket()
 	// open shop
 	else if (!strncmp((char*)net_packet->data, "SHOP", 4))
 	{
-		closeAllGUIs(DONT_CHANGE_SHOOTMODE, CLOSEGUI_DONT_CLOSE_SHOP);
-		openStatusScreen(GUI_MODE_SHOP, INVENTORY_MODE_ITEM);
-		shopkeeper = (Uint32)SDLNet_Read32(&net_packet->data[4]);
-		shopkeepertype = net_packet->data[8];
-		strcpy( shopkeepername_client, (char*)(&net_packet->data[9]) );
-		shopkeepername = shopkeepername_client;
-		shoptimer = ticks - 1;
-		shopspeech = language[194 + rand() % 3];
-		shopinventorycategory = 7;
-		sellitem = NULL;
-		shopitemscroll = 0;
+		players[clientnum]->closeAllGUIs(DONT_CHANGE_SHOOTMODE, CLOSEGUI_DONT_CLOSE_SHOP);
+		players[clientnum]->openStatusScreen(GUI_MODE_SHOP, INVENTORY_MODE_ITEM);
+		shopkeeper[clientnum] = (Uint32)SDLNet_Read32(&net_packet->data[4]);
+		shopkeepertype[clientnum] = net_packet->data[8];
+		strcpy( shopkeepername_client[clientnum], (char*)(&net_packet->data[9]) );
+		shopkeepername[clientnum] = shopkeepername_client[clientnum];
+		shoptimer[clientnum] = ticks - 1;
+		shopspeech[clientnum] = language[194 + rand() % 3];
+		shopinventorycategory[clientnum] = 7;
+		sellitem[clientnum] = NULL;
+		shopitemscroll[clientnum] = 0;
 		//Initialize shop gamepad code here.
-		if ( shopinvitems[0] != nullptr )
+		if ( shopinvitems[clientnum][0] != nullptr )
 		{
-			selectedShopSlot = 0;
-			warpMouseToSelectedShopSlot();
+			selectedShopSlot[clientnum] = 0;
+			warpMouseToSelectedShopSlot(clientnum);
 		}
 		else
 		{
-			selectedShopSlot = -1;
+			selectedShopSlot[clientnum] = -1;
 		}
 		return;
 	}
@@ -2970,21 +3056,22 @@ void clientHandlePacket()
 	// shop item
 	else if (!strncmp((char*)net_packet->data, "SHPI", 4))
 	{
-		if ( !shopInv )
+		if ( !shopInv[clientnum] )
 		{
 			return;
 		}
-		newItem(static_cast<ItemType>(SDLNet_Read32(&net_packet->data[4])), static_cast<Status>((char)net_packet->data[8]), (char)net_packet->data[9], (unsigned char)net_packet->data[10], SDLNet_Read32(&net_packet->data[11]), (bool)net_packet->data[15], shopInv);
+		newItem(static_cast<ItemType>(SDLNet_Read32(&net_packet->data[4])), static_cast<Status>((char)net_packet->data[8]), (char)net_packet->data[9], (unsigned char)net_packet->data[10], SDLNet_Read32(&net_packet->data[11]), (bool)net_packet->data[15], shopInv[clientnum]);
 	}
 
 	// close shop
 	else if (!strncmp((char*)net_packet->data, "SHPC", 4))
 	{
-		shopkeeper = 0;
-		closeAllGUIs(CLOSEGUI_ENABLE_SHOOTMODE, CLOSEGUI_CLOSE_ALL);
-		list_FreeAll(shopInv);
-		//Clean up shop gamepad code here.
-		selectedShopSlot = -1;
+		Uint32 id = SDLNet_Read32(&net_packet->data[4]);
+		if ( id == shopkeeper[clientnum] )
+		{
+			closeShop(clientnum);
+			players[clientnum]->closeAllGUIs(CLOSEGUI_ENABLE_SHOOTMODE, CLOSEGUI_CLOSE_ALL);
+		}
 		return;
 	}
 
@@ -3030,7 +3117,7 @@ void clientHandlePacket()
 
 			//deleteSaveGame(multiplayer); // stops save scumming c: //Not here, because it'll make the game unresumable if the game crashes but not all players have died.
 
-			closeBookGUI();
+			players[clientnum]->bookGUI.closeBookGUI();
 
 #ifdef SOUND
 			levelmusicplaying = true;
@@ -3277,7 +3364,7 @@ void clientHandlePacket()
 
 		if ( net_packet->data[5] == PRO_ALCHEMY )
 		{
-			GenericGUI.alchemyLearnRecipeOnLevelUp(stats[clientnum]->PROFICIENCIES[net_packet->data[5]]);
+			GenericGUI[clientnum].alchemyLearnRecipeOnLevelUp(stats[clientnum]->PROFICIENCIES[net_packet->data[5]]);
 		}
 		return;
 	}
@@ -3446,10 +3533,13 @@ void clientHandlePacket()
 		}
 
 		// hack to fix these things from breaking everything...
-		hudarm = nullptr;
-		hudweapon = nullptr;
-		magicLeftHand = nullptr;
-		magicRightHand = nullptr;
+		for ( int i = 0; i < MAXPLAYERS; ++i )
+		{
+			players[i]->hud.arm = nullptr;
+			players[i]->hud.weapon = nullptr;
+			players[i]->hud.magicLeftHand = nullptr;
+			players[i]->hud.magicRightHand = nullptr;
+		}
 
 		// stop all sounds
 #ifdef USE_FMOD
@@ -3481,7 +3571,7 @@ void clientHandlePacket()
 #endif
 		if ( openedChest[clientnum] )
 		{
-			closeChestClientside();
+			closeChestClientside(clientnum);
 		}
 
 		// show loading message
@@ -3489,7 +3579,7 @@ void clientHandlePacket()
 		loading = true;
 		drawClearBuffers();
 		int w, h;
-		TTF_SizeUTF8(ttf16, LOADSTR, &w, &h);
+		getSizeOfText(ttf16, LOADSTR, &w, &h);
 		ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, LOADSTR);
 
 		GO_SwapBuffers(screen);
@@ -3572,11 +3662,14 @@ void clientHandlePacket()
 			conductGameChallenges[CONDUCT_MODDED] = 1;
 		}
 
-		minimapPings.clear(); // clear minimap pings
+		for ( int i = 0; i < MAXPLAYERS; ++i )
+		{
+			minimapPings[i].clear(); // clear minimap pings
+		}
 		globalLightModifierActive = GLOBAL_LIGHT_MODIFIER_STOPPED;
 
 		// clear follower menu entities.
-		FollowerMenu.closeFollowerMenuGUI(true);
+		FollowerMenu[clientnum].closeFollowerMenuGUI(true);
 
 		numplayers = 0;
 		assignActions(&map);
@@ -3684,9 +3777,9 @@ void clientHandlePacket()
 			{
 				strcpy(monster->clientStats->name, (char*)&net_packet->data[8]);
 			}
-			if ( !FollowerMenu.recentEntity )
+			if ( !FollowerMenu[clientnum].recentEntity )
 			{
-				FollowerMenu.recentEntity = monster;
+				FollowerMenu[clientnum].recentEntity = monster;
 			}
 		}
 		return;
@@ -3702,14 +3795,14 @@ void clientHandlePacket()
 			{
 				if ( (Uint32*)allyNode->element && *((Uint32*)allyNode->element) == uidnum )
 				{
-					if ( FollowerMenu.recentEntity && (FollowerMenu.recentEntity->getUID() == 0
-						|| FollowerMenu.recentEntity->getUID() == uidnum) )
+					if ( FollowerMenu[clientnum].recentEntity && (FollowerMenu[clientnum].recentEntity->getUID() == 0
+						|| FollowerMenu[clientnum].recentEntity->getUID() == uidnum) )
 					{
-						FollowerMenu.recentEntity = nullptr;
+						FollowerMenu[clientnum].recentEntity = nullptr;
 					}
-					if ( FollowerMenu.followerToCommand == uidToEntity(uidnum) )
+					if ( FollowerMenu[clientnum].followerToCommand == uidToEntity(uidnum) )
 					{
-						FollowerMenu.closeFollowerMenuGUI();
+						FollowerMenu[clientnum].closeFollowerMenuGUI();
 					}
 					list_RemoveNode(allyNode);
 					break;
@@ -3919,23 +4012,18 @@ void clientHandlePacket()
 		if ( openedChest[clientnum] )
 		{
 			//Close the chest.
-			closeChestClientside();
+			closeChestClientside(clientnum);
 		}
 
 		Entity *entity = uidToEntity((int)SDLNet_Read32(&net_packet->data[4]));
 		if ( entity )
 		{
 			openedChest[clientnum] = entity; //Set the opened chest to this.
-			if ( removecursegui_active )
-			{
-				closeRemoveCurseGUI();
-			}
-			GenericGUI.closeGUI();
-			identifygui_active = false;
-			list_FreeAll(&chestInv);
-			chestInv.first = nullptr;
-			chestInv.last = nullptr;
-			openStatusScreen(GUI_MODE_INVENTORY, INVENTORY_MODE_ITEM);
+			GenericGUI[clientnum].closeGUI();
+			list_FreeAll(&chestInv[clientnum]);
+			chestInv[clientnum].first = nullptr;
+			chestInv[clientnum].last = nullptr;
+			players[clientnum]->openStatusScreen(GUI_MODE_INVENTORY, INVENTORY_MODE_ITEM);
 		}
 		return;
 	}
@@ -3964,61 +4052,29 @@ void clientHandlePacket()
 			newitem->identified = false;
 		}
 
-		addItemToChestClientside(newitem);
+		addItemToChestClientside(clientnum, newitem);
 		return;
 	}
 
 	//Close the chest.
 	else if (!strncmp((char*)net_packet->data, "CCLS", 4))
 	{
-		closeChestClientside();
+		closeChestClientside(clientnum);
 		return;
 	}
 
 	//Open up the GUI to identify an item.
 	else if (!strncmp((char*)net_packet->data, "IDEN", 4))
 	{
-		//identifygui_mode = true;
-		identifygui_active = true;
-		identifygui_appraising = false;
-		shootmode = false;
-		openStatusScreen(GUI_MODE_INVENTORY, INVENTORY_MODE_ITEM); // Reset the GUI to the inventory.
-		if ( removecursegui_active )
-		{
-			closeRemoveCurseGUI();
-		}
-		GenericGUI.closeGUI();
-		if ( openedChest[clientnum] )
-		{
-			openedChest[clientnum]->closeChest();
-		}
-
-		//Initialize Identify GUI game controller code here.
-		initIdentifyGUIControllerCode();
-
+		GenericGUI[clientnum].openGUI(GUI_TYPE_IDENTIFY, nullptr);
 		return;
 	}
 
 	// Open up the Remove Curse GUI
 	else if ( !strncmp((char*)net_packet->data, "CRCU", 4) )
 	{
-		removecursegui_active = true;
-		shootmode = false;
-		openStatusScreen(GUI_MODE_INVENTORY, INVENTORY_MODE_ITEM); // Reset the GUI to the inventory.
-
-		if ( identifygui_active )
-		{
-			CloseIdentifyGUI();
-		}
-		GenericGUI.closeGUI();
-
-		if ( openedChest[clientnum] )
-		{
-			openedChest[clientnum]->closeChest();
-		}
-
-		initRemoveCurseGUIControllerCode();
-
+		//Uncurse an item
+		GenericGUI[clientnum].openGUI(GUI_TYPE_REMOVECURSE, nullptr);
 		return;
 	}
 
@@ -4071,7 +4127,7 @@ void clientHandlePacket()
 
 	else if ( !strncmp((char*)net_packet->data, "TKIT", 4) )
 	{
-		GenericGUI.tinkeringKitDegradeOnUse(clientnum);
+		GenericGUI[clientnum].tinkeringKitDegradeOnUse(clientnum);
 		return;
 	}
 
@@ -4205,7 +4261,13 @@ void clientHandlePacket()
 	else if ( !strncmp((char*)net_packet->data, "PMAP", 4) )
 	{
 		MinimapPing newPing(ticks, net_packet->data[4], net_packet->data[5], net_packet->data[6]);
-		minimapPingAdd(newPing);
+		for ( int c = 0; c < MAXPLAYERS; ++c )
+		{
+			if ( players[c]->isLocalPlayer() )
+			{
+				minimapPingAdd(newPing.player, c, newPing);
+			}
+		}
 	}
 	else if ( !strncmp((char*)net_packet->data, "DASH", 4) )
 	{
@@ -4535,12 +4597,24 @@ void serverHandlePacket()
 		{
 			strcpy((char*)net_packet->data, "ITMU");
 			SDLNet_Write32(uid, &net_packet->data[4]);
-			SDLNet_Write32(entity->skill[10], &net_packet->data[8]); // item type
-			SDLNet_Write32(entity->skill[11], &net_packet->data[12]); // status
-			SDLNet_Write32(entity->skill[12], &net_packet->data[16]); // beatitude
+
+			Uint32 itemTypeAndIdentified = (static_cast<Uint16>(entity->skill[10]) << 16); // type
+			itemTypeAndIdentified |= static_cast<Uint16>(entity->skill[15]); // identified
+
+			SDLNet_Write32(itemTypeAndIdentified, &net_packet->data[8]);
+
+			Uint32 statusBeatitudeQuantityAppearance = 0;
+			statusBeatitudeQuantityAppearance |= (static_cast<Uint8>(entity->skill[11]) << 24); // status
+			statusBeatitudeQuantityAppearance |= (static_cast<Sint8>(entity->skill[12]) << 16); // beatitude
+			statusBeatitudeQuantityAppearance |= (static_cast<Uint8>(entity->skill[13]) << 8); // quantity
+			Uint8 appearance = entity->skill[14] % items[entity->skill[10]].variations;
+			statusBeatitudeQuantityAppearance |= (static_cast<Uint8>(appearance)); // appearance
+
+			SDLNet_Write32(statusBeatitudeQuantityAppearance, &net_packet->data[12]);
+
 			net_packet->address.host = net_clients[x - 1].host;
 			net_packet->address.port = net_clients[x - 1].port;
-			net_packet->len = 20;
+			net_packet->len = 16;
 			sendPacketSafe(net_sock, -1, net_packet, x - 1);
 			return; // found entity.
 		}
@@ -4904,7 +4978,7 @@ void serverHandlePacket()
 				printlog("client %d bought item from shop (uid=%d)\n", client, uidnum);
 				if ( shopIsMysteriousShopkeeper(entity) )
 				{
-					buyItemFromMysteriousShopkeepConsumeOrb(*entity, *item2);
+					buyItemFromMysteriousShopkeepConsumeOrb(client, *entity, *item2);
 				}
 				consumeItem(item2, client);
 				break;
@@ -5408,7 +5482,7 @@ void serverHandlePacket()
 			for ( int c = 1; c < MAXPLAYERS; ++c )
 			{
 				// send to all other players
-				if ( c != player && !client_disconnected[c] )
+				if ( c != player && !client_disconnected[c] && !players[c]->isLocalPlayer() )
 				{
 					strcpy((char*)net_packet->data, "SNEL");
 					SDLNet_Write16(sfx, &net_packet->data[4]);
@@ -5454,8 +5528,7 @@ void serverHandlePacket()
 	else if ( !strncmp((char*)net_packet->data, "PMAP", 4) )
 	{
 		MinimapPing newPing(ticks, net_packet->data[4], net_packet->data[5], net_packet->data[6]);
-		minimapPingAdd(newPing);
-		sendMinimapPing(net_packet->data[4], newPing.x, newPing.y); // relay to other clients.
+		sendMinimapPing(net_packet->data[4], newPing.x, newPing.y); // relay self and to other clients.
 		return;
 	}
 
@@ -5642,7 +5715,6 @@ void serverHandleMessages(Uint32 framerateBreakInterval)
 
 bool handleSafePacket()
 {
-	packetsend_t* packet;
 	node_t* node;
 	int c, j;
 

@@ -54,7 +54,6 @@ void actThrown(Entity* my)
 	Category cat = GEM;
 	ItemType type = WOODEN_SHIELD;
 	char* itemname = nullptr;
-	node_t* node;
 
 	item = newItemFromEntity(my);
 	if ( item )
@@ -107,6 +106,11 @@ void actThrown(Entity* my)
 						}
 					}
 				}
+			}
+
+			if ( my->parent && cat == THROWN && uidToEntity(my->parent) && uidToEntity(my->parent)->behavior != &actPlayer )
+			{
+				my->createWorldUITooltip();
 			}
 		}
 		if ( my->sprite == BOOMERANG_PARTICLE )
@@ -169,6 +173,11 @@ void actThrown(Entity* my)
 	if ( parent && parent->getRace() == LICH_ICE )
 	{
 		specialMonster = true;
+	}
+
+	if ( THROWN_LIFE == 1 && cat == THROWN && parent && parent->behavior != &actPlayer )
+	{
+		my->createWorldUITooltip();
 	}
 
 	// gravity
@@ -520,7 +529,7 @@ void actThrown(Entity* my)
 	{
 		for ( int i = 0; i < MAXPLAYERS; i++ )
 		{
-			if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+			if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 			{
 				if ( inrange[i] )
 				{
@@ -538,7 +547,7 @@ void actThrown(Entity* my)
 							{
 								steamAchievementClient(i, "BARONY_ACH_ALL_IN_REFLEXES");
 							}
-							if ( i == 0 )
+							if ( players[i]->isLocalPlayer() )
 							{
 								free(item2);
 							}
@@ -546,7 +555,7 @@ void actThrown(Entity* my)
 							item->count = 1;
 							messagePlayer(i, language[504], item->description());
 							item->count = oldcount;
-							if ( i != 0 )
+							if ( i != 0 && !players[i]->isLocalPlayer() )
 							{
 								free(item);
 							}
@@ -600,6 +609,10 @@ void actThrown(Entity* my)
 	if ( processXYCollision && result != sqrt(THROWN_VELX * THROWN_VELX + THROWN_VELY * THROWN_VELY) )
 	{
 		item = newItemFromEntity(my);
+		if ( !item )
+		{
+			return;
+		}
 		if ( itemCategory(item) == THROWN 
 			&& (item->type == STEEL_CHAKRAM || item->type == CRYSTAL_SHURIKEN) )
 		{
@@ -1179,7 +1192,7 @@ void actThrown(Entity* my)
 					playSoundEntity(hit.entity, 28, 64);
 					if ( hit.entity->behavior == &actPlayer )
 					{
-						if ( hit.entity->skill[2] == clientnum || splitscreen )
+						if ( players[hit.entity->skill[2]]->isLocalPlayer() )
 						{
 							cameravars[hit.entity->skill[2]].shakex += .1;
 							cameravars[hit.entity->skill[2]].shakey += 10;
@@ -1208,7 +1221,7 @@ void actThrown(Entity* my)
 					}
 					if ( hit.entity->behavior == &actPlayer )
 					{
-						if ( hit.entity->skill[2] == clientnum )
+						if ( players[hit.entity->skill[2]]->isLocalPlayer() )
 						{
 							cameravars[hit.entity->skill[2]].shakex += .05;
 							cameravars[hit.entity->skill[2]].shakey += 5;

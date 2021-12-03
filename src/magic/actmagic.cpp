@@ -458,7 +458,7 @@ void actMagicMissile(Entity* my)   //TODO: Verify this function.
 	{
 		my->removeLightField();
 
-		if (clientnum == 0 || multiplayer == SERVER)
+		if ( multiplayer != CLIENT )
 		{
 			//Handle the missile's life.
 			MAGIC_LIFE++;
@@ -833,7 +833,7 @@ void actMagicMissile(Entity* my)   //TODO: Verify this function.
 						{
 							// set armornum to the relevant equipment slot to send to clients
 							int armornum = 5 + reflection;
-							if ( player == clientnum || player < 0 )
+							if ( (player >= 0 && players[player]->isLocalPlayer()) || player < 0 )
 							{
 								if ( reflection == 1 )
 								{
@@ -2622,7 +2622,7 @@ void actMagicMissile(Entity* my)   //TODO: Verify this function.
 								net_packet->len = 6;
 								sendPacketSafe(net_sock, -1, net_packet, player - 1);
 							}
-							else if (player == 0 || splitscreen)
+							else if (player == 0 || (splitscreen && player > 0) )
 							{
 								cameravars[player].shakex += .1;
 								cameravars[player].shakey += 10;
@@ -3525,7 +3525,7 @@ void createParticleSap(Entity* parent)
 		}
 		entity->setUID(-3);
 
-		if ( sprite = 977 ) // boomerang
+		if ( sprite == 977 ) // boomerang
 		{
 			entity->z = parent->z;
 			entity->scalex = 1.f;
@@ -4310,7 +4310,7 @@ void actParticleSapCenter(Entity* my)
 					achievementObserver.awardAchievementIfActive(parent->skill[2], parent, AchievementObserver::BARONY_ACH_IF_YOU_LOVE_SOMETHING);
 					if ( pickedUp )
 					{
-						if ( parent->skill[2] == 0 )
+						if ( parent->skill[2] == 0 || (parent->skill[2] > 0 && splitscreen) )
 						{
 							// pickedUp is the new inventory stack for server, free the original items
 							free(item);
@@ -4319,12 +4319,15 @@ void actParticleSapCenter(Entity* my)
 							{
 								useItem(pickedUp, parent->skill[2]);
 							}
-							if ( magicBoomerangHotbarSlot >= 0 )
+							auto& hotbar_t = players[parent->skill[2]]->hotbar;
+							if ( hotbar_t.magicBoomerangHotbarSlot >= 0 )
 							{
-								hotbar[magicBoomerangHotbarSlot].item = pickedUp->uid;
+								auto& hotbar = hotbar_t.slots();
+								hotbar[hotbar_t.magicBoomerangHotbarSlot].item = pickedUp->uid;
 								for ( int i = 0; i < NUM_HOTBAR_SLOTS; ++i )
 								{
-									if ( i != magicBoomerangHotbarSlot && hotbar[i].item == pickedUp->uid )
+									if ( i != hotbar_t.magicBoomerangHotbarSlot
+										&& hotbar[i].item == pickedUp->uid )
 									{
 										hotbar[i].item = 0;
 									}
@@ -4375,7 +4378,7 @@ void actParticleSapCenter(Entity* my)
 			{
 				spawnMagicEffectParticles(my->skill[8], my->skill[9], 0, my->skill[5]);
 				Entity* caster = uidToEntity(my->skill[7]);
-				if ( caster && caster->behavior == &actPlayer )
+				if ( caster && caster->behavior == &actPlayer && stats[caster->skill[2]] )
 				{
 					// kill old summons.
 					for ( node_t* node = stats[caster->skill[2]]->FOLLOWERS.first; node != nullptr; node = node->next )
@@ -4405,17 +4408,15 @@ void actParticleSapCenter(Entity* my)
 						if ( monsterStats )
 						{
 							int magicLevel = 1;
-							if ( stats[caster->skill[2]] )
-							{
-								magicLevel = std::min(7, 1 + (stats[caster->skill[2]]->playerSummonLVLHP >> 16) / 5);
-							}
+							magicLevel = std::min(7, 1 + (stats[caster->skill[2]]->playerSummonLVLHP >> 16) / 5);
+
 							monster->monsterAllySummonRank = magicLevel;
 							strcpy(monsterStats->name, "skeleton knight");
 							forceFollower(*caster, *monster);
 
 							monster->setEffect(EFF_STUNNED, true, 20, false);
 							bool spawnSecondAlly = false;
-							 
+							
 							if ( (caster->getINT() + stats[caster->skill[2]]->PROFICIENCIES[PRO_MAGIC]) >= SKILL_LEVEL_EXPERT )
 							{
 								spawnSecondAlly = true;

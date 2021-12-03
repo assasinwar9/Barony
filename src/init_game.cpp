@@ -52,7 +52,7 @@ int initGame()
 {
 	int c, x;
 	char name[32];
-	FILE* fp;
+	File* fp;
 
 	// setup some lists
 	booksRead.first = NULL;
@@ -82,7 +82,7 @@ int initGame()
 	// print a loading message
 	drawClearBuffers();
 	int w, h;
-	TTF_SizeUTF8(ttf16, _LOADSTR1, &w, &h);
+	getSizeOfText(ttf16, _LOADSTR1, &w, &h);
 	ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, _LOADSTR1);
 
 	GO_SwapBuffers(screen);
@@ -122,14 +122,14 @@ int initGame()
 
 		// read file
 		int line;
-		for ( line = 1; feof(fp) == 0; line++ )
+		for ( line = 1; !fp->eof(); line++ )
 		{
 			char data[256];
 			int limb = 20;
 			int dummy;
 
 			// read line from file
-			fgets( data, 256, fp );
+			fp->gets( data, 256 );
 
 			// skip blank and comment lines
 			if ( data[0] == '\n' || data[0] == '\r' || data[0] == '#' )
@@ -151,12 +151,12 @@ int initGame()
 		}
 
 		// close file
-		fclose(fp);
+		FileIO::close(fp);
 	}
 
 	// print a loading message
 	drawClearBuffers();
-	TTF_SizeUTF8(ttf16, _LOADSTR2, &w, &h);
+	getSizeOfText(ttf16, _LOADSTR2, &w, &h);
 	ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, _LOADSTR2);
 
 	GO_SwapBuffers(screen);
@@ -168,7 +168,7 @@ int initGame()
 	std::string itemsDirectory = PHYSFS_getRealDir("items/items.txt");
 	itemsDirectory.append(PHYSFS_getDirSeparator()).append("items/items.txt");
 	fp = openDataFile(itemsDirectory.c_str(), "r");
-	for ( c = 0; !feof(fp); ++c )
+	for ( c = 0; !fp->eof(); ++c )
 	{
 		if ( c > SPELLBOOK_DETECT_FOOD )
 		{
@@ -187,26 +187,10 @@ int initGame()
 			items[c].name_identified = language[1545 + c * 2];
 			items[c].name_unidentified = language[1546 + c * 2];
 		}
-		fscanf(fp, "%d", &items[c].index);
-		while ( fgetc(fp) != '\n' ) if ( feof(fp) )
-			{
-				break;
-			}
-		fscanf(fp, "%d", &items[c].fpindex);
-		while ( fgetc(fp) != '\n' ) if ( feof(fp) )
-			{
-				break;
-			}
-		fscanf(fp, "%d", &items[c].variations);
-		while ( fgetc(fp) != '\n' ) if ( feof(fp) )
-			{
-				break;
-			}
-		fscanf(fp, "%s", name);
-		while ( fgetc(fp) != '\n' ) if ( feof(fp) )
-			{
-				break;
-			}
+		items[c].index = fp->geti();
+		items[c].fpindex = fp->geti();
+		items[c].variations = fp->geti();
+		fp->gets2(name, 32);
 		if ( !strcmp(name, "WEAPON") )
 		{
 			items[c].category = WEAPON;
@@ -263,16 +247,8 @@ int initGame()
 		{
 			items[c].category = GEM;
 		}
-		fscanf(fp, "%d", &items[c].weight);
-		while ( fgetc(fp) != '\n' ) if ( feof(fp) )
-			{
-				break;
-			}
-		fscanf(fp, "%d", &items[c].value);
-		while ( fgetc(fp) != '\n' ) if ( feof(fp) )
-			{
-				break;
-			}
+		items[c].weight = fp->geti();
+		items[c].value = fp->geti();
 		items[c].images.first = NULL;
 		items[c].images.last = NULL;
 		while ( 1 )
@@ -289,9 +265,9 @@ int initGame()
 
 			x = 0;
 			bool fileend = false;
-			while ( (string->data[x] = fgetc(fp)) != '\n' )
+			while ( (string->data[x] = fp->getc()) != '\n' )
 			{
-				if ( feof(fp) )
+				if ( fp->eof() )
 				{
 					fileend = true;
 					break;
@@ -335,26 +311,38 @@ int initGame()
 			*surface = loadImage(imgFileChar);
 		}
 	}
-	fclose(fp);
+	FileIO::close(fp);
 	createBooks();
 	setupSpells();
 
+#ifdef NINTENDO
+	std::string maleNames, femaleNames;
+	maleNames = BASE_DATA_DIR + std::string("/") + PLAYERNAMES_MALE_FILE;
+	femaleNames = BASE_DATA_DIR + std::string("/") + PLAYERNAMES_FEMALE_FILE;
+	randomPlayerNamesMale = getLinesFromDataFile(maleNames);
+	randomPlayerNamesFemale = getLinesFromDataFile(femaleNames);
+#else // NINTENDO
 	randomPlayerNamesMale = getLinesFromDataFile(PLAYERNAMES_MALE_FILE);
 	randomPlayerNamesFemale = getLinesFromDataFile(PLAYERNAMES_FEMALE_FILE);
+#endif // !NINTENDO
+
 	loadItemLists();
 
 #if defined(USE_EOS) || defined(STEAMWORKS)
 #else
+ #ifdef NINTENDO
+	#error "No DLC support on SWITCH yet :(" //TODO: Resolve this.
+ #else // NINTENDO
 	if ( PHYSFS_getRealDir("mythsandoutcasts.key") != NULL )
 	{
 		std::string serial = PHYSFS_getRealDir("mythsandoutcasts.key");
 		serial.append(PHYSFS_getDirSeparator()).append("mythsandoutcasts.key");
 		// open the serial file
-		FILE* fp = nullptr;
-		if ( (fp = fopen(serial.c_str(), "rb")) != NULL )
+		File* fp = nullptr;
+		if ( (fp = FileIO::open(serial.c_str(), "rb")) != NULL )
 		{
 			char buf[64];
-			size_t len = fread(&buf, sizeof(char), 32, fp);
+			size_t len = fp->read(&buf, sizeof(char), 32);
 			buf[len] = '\0';
 			serial = buf;
 			// compute hash
@@ -368,19 +356,19 @@ int initGame()
 			{
 				printlog("[LICENSE]: DLC license key invalid.");
 			}
-			fclose(fp);
+			FileIO::close(fp);
 		}
 	}
-	if ( PHYSFS_getRealDir("legendsandpariahs.key") != NULL )
+	if ( PHYSFS_getRealDir("legendsandpariahs.key") != NULL ) //TODO: NX PORT: Update for the Switch?
 	{
 		std::string serial = PHYSFS_getRealDir("legendsandpariahs.key");
 		serial.append(PHYSFS_getDirSeparator()).append("legendsandpariahs.key");
 		// open the serial file
-		FILE* fp = nullptr;
-		if ( (fp = fopen(serial.c_str(), "rb")) != NULL )
+		File* fp = nullptr;
+		if ( (fp = FileIO::open(serial.c_str(), "rb")) != NULL )
 		{
 			char buf[64];
-			size_t len = fread(&buf, sizeof(char), 32, fp);
+			size_t len = fp->read(&buf, sizeof(char), 32);
 			buf[len] = '\0';
 			serial = buf;
 			// compute hash
@@ -394,14 +382,15 @@ int initGame()
 			{
 				printlog("[LICENSE]: DLC license key invalid.");
 			}
-			fclose(fp);
+			FileIO::close(fp);
 		}
 	}
+ #endif // !NINTENDO
 #endif
 
 	// print a loading message
 	drawClearBuffers();
-	TTF_SizeUTF8(ttf16, _LOADSTR3, &w, &h);
+	getSizeOfText(ttf16, _LOADSTR3, &w, &h);
 	ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, _LOADSTR3);
 
 	GO_SwapBuffers(screen);
@@ -425,23 +414,29 @@ int initGame()
 	topscoresMultiplayer.last = NULL;
 	messages.first = NULL;
 	messages.last = NULL;
-	chestInv.first = NULL;
-	chestInv.last = NULL;
+	for ( int i = 0; i < MAXPLAYERS; ++i )
+	{
+		chestInv[i].first = NULL;
+		chestInv[i].last = NULL;
+		for ( c = 0; c < kNumChestItemsToDisplay; c++ )
+		{
+			invitemschest[i][c] = NULL;
+		}
+	}
 	command_history.first = NULL;
 	command_history.last = NULL;
 	for ( c = 0; c < MAXPLAYERS; c++ )
 	{
-		invitemschest[c] = NULL;
 		openedChest[c] = NULL;
 	}
 	mousex = xres / 2;
 	mousey = yres / 2;
 
-	players = new Player*[MAXPLAYERS];
 	// default player stats
 	for (c = 0; c < MAXPLAYERS; c++)
 	{
-		players[c] = new Player();
+		players[c] = new Player(c, true);
+		players[c]->init();
 		// Stat set to 0 as monster type not needed, values will be filled with default, then overwritten by savegame or the charclass.cpp file
 		stats[c] = new Stat(0);
 		if (c > 0)
@@ -465,6 +460,13 @@ int initGame()
 		{
 			initClass(c);
 		}
+		GenericGUI[c].setPlayer(c);
+		FollowerMenu[c].setPlayer(c);
+		cameras[c].winx = 0;
+		cameras[c].winy = 0;
+		cameras[c].winw = xres;
+		cameras[c].winh = yres;
+		cast_animation[c].player = c;
 	}
 
 	// load music
@@ -627,7 +629,7 @@ int fmod_result;
 
 	// print a loading message
 	drawClearBuffers();
-	TTF_SizeUTF8(ttf16, _LOADSTR4, &w, &h);
+	getSizeOfText(ttf16, _LOADSTR4, &w, &h);
 	ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, _LOADSTR4);
 
 	GO_SwapBuffers(screen);
@@ -637,6 +639,9 @@ int fmod_result;
 	logo_bmp = loadImage("images/system/logo.png");
 	cursor_bmp = loadImage("images/system/cursor.png");
 	cross_bmp = loadImage("images/system/cross.png");
+	selected_cursor_bmp = loadImage("images/system/selectedcursor.png");
+	controllerglyphs1_bmp = loadImage("images/system/glyphsheet_ns.png");
+	skillIcons_bmp = loadImage("images/system/skillicons_sheet.png");
 
 	loadAllScores(SCORESFILE);
 	loadAllScores(SCORESFILE_MULTIPLAYER);
@@ -734,7 +739,10 @@ void deinitGame()
 	saveAllScores(SCORESFILE_MULTIPLAYER);
 	list_FreeAll(&topscores);
 	list_FreeAll(&topscoresMultiplayer);
-	deleteAllNotificationMessages();
+	for ( int i = 0; i < MAXPLAYERS; ++i )
+	{
+		players[i]->messageZone.deleteAllNotificationMessages();
+	}
 	list_FreeAll(&removedEntities);
 	if ( title_bmp != nullptr )
 	{
@@ -752,9 +760,24 @@ void deinitGame()
 	{
 		SDL_FreeSurface(cross_bmp);
 	}
+	if ( selected_cursor_bmp != nullptr )
+	{
+		SDL_FreeSurface(selected_cursor_bmp);
+	}
+	if ( controllerglyphs1_bmp != nullptr )
+	{
+		SDL_FreeSurface(controllerglyphs1_bmp);
+	}
+	if ( skillIcons_bmp != nullptr )
+	{
+		SDL_FreeSurface(skillIcons_bmp);
+	}
 	//if(sky_bmp!=NULL)
 	//	SDL_FreeSurface(sky_bmp);
-	list_FreeAll(&chestInv);
+	for ( int i = 0; i < MAXPLAYERS; ++i )
+	{
+		list_FreeAll(&chestInv[i]);
+	}
 	freeInterfaceResources();
 	if ( books )
 	{
@@ -780,25 +803,30 @@ void deinitGame()
 		}
 		free(books);
 	}
-	appraisal_timer = 0;
-	appraisal_item = 0;
 	for ( c = 0; c < MAXPLAYERS; c++ )
 	{
+		players[c]->inventoryUI.appraisal.timer = 0;
+		players[c]->inventoryUI.appraisal.current_item = 0;
 		list_FreeAll(&stats[c]->inventory);
-	}
-	if ( multiplayer == CLIENT )
-	{
-		if ( shopInv )
+		list_FreeAll(&stats[c]->FOLLOWERS);
+		if ( multiplayer == CLIENT )
 		{
-			list_FreeAll(shopInv);
-			free(shopInv);
-			shopInv = NULL;
+			if ( shopInv[c] )
+			{
+				list_FreeAll(shopInv[c]);
+				free(shopInv[c]);
+				shopInv[c] = NULL;
+			}
 		}
 	}
 	list_FreeAll(map.entities);
 	if ( map.creatures )
 	{
 		list_FreeAll(map.creatures); //TODO: Need to do this?
+	}
+	if ( map.worldUI )
+	{
+		list_FreeAll(map.worldUI); //TODO: Need to do this?
 	}
 	list_FreeAll(&messages);
 	if ( multiplayer == SINGLE )
@@ -816,7 +844,11 @@ void deinitGame()
 			list_FreeAll(&channeledSpells[c]);
 		}
 	}
-	list_FreeAll(&spellList);
+
+	for ( c = 0; c < MAXPLAYERS; c++ )
+	{
+		list_FreeAll(&players[c]->magic.spellList);
+	}
 	list_FreeAll(&command_history);
 
 	list_FreeAll(&safePacketsSent);
@@ -1043,10 +1075,12 @@ void deinitGame()
 		SDL_GameControllerClose(game_controller);
 		game_controller = nullptr;
 	}*/
-	if (game_controller)
+	/*if (game_controller)
 	{
 		delete game_controller;
-	}
+	}*/
+
+	IRCHandler.disconnect();
 
 	if ( shoparea )
 	{
@@ -1056,6 +1090,6 @@ void deinitGame()
 	for (int i = 0; i < MAXPLAYERS; ++i)
 	{
 		delete players[i];
+		players[i] = nullptr;
 	}
-	delete[] players;
 }

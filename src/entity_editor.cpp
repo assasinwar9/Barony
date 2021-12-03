@@ -35,6 +35,7 @@ Entity::Entity(Sint32 in_sprite, Uint32 pos, list_t* entlist, list_t* creatureli
 	chestPreventLockpickCapstoneExploit(skill[10]),
 	chestHasVampireBook(skill[11]),
 	chestLockpickHealth(skill[12]),
+	chestOldHealth(skill[15]),
 	monsterState(skill[0]),
 	monsterTarget(skill[1]),
 	monsterTargetX(fskill[2]),
@@ -156,6 +157,7 @@ Entity::Entity(Sint32 in_sprite, Uint32 pos, list_t* entlist, list_t* creatureli
 	doorDisableLockpicks(skill[12]),
 	doorDisableOpening(skill[13]),
 	doorLockpickHealth(skill[14]),
+	doorOldHealth(skill[15]),
 	particleTimerDuration(skill[0]),
 	particleTimerEndAction(skill[1]),
 	particleTimerEndSprite(skill[3]),
@@ -231,6 +233,7 @@ Entity::Entity(Sint32 in_sprite, Uint32 pos, list_t* entlist, list_t* creatureli
 	furnitureMaxHealth(skill[9]),
 	furnitureTableRandomItemChance(skill[10]),
 	furnitureTableSpawnChairs(skill[11]),
+	furnitureOldHealth(skill[15]),
 	pistonCamDir(skill[0]),
 	pistonCamTimer(skill[1]),
 	pistonCamRotateSpeed(fskill[0]),
@@ -270,6 +273,8 @@ Entity::Entity(Sint32 in_sprite, Uint32 pos, list_t* entlist, list_t* creatureli
 	goldAmbience(skill[1]),
 	goldSokoban(skill[2]),
 	interactedByMonster(skill[47]),
+	highlightForUI(fskill[29]),
+	highlightForUIGlow(fskill[28]),
 	soundSourceFired(skill[0]),
 	soundSourceToPlay(skill[1]),
 	soundSourceVolume(skill[2]),
@@ -297,7 +302,15 @@ Entity::Entity(Sint32 in_sprite, Uint32 pos, list_t* entlist, list_t* creatureli
 	signalInputDirection(skill[5]),
 	thrownProjectilePower(skill[19]),
 	thrownProjectileCharge(skill[20]),
-	playerStartDir(skill[1])
+	playerStartDir(skill[1]),
+	worldTooltipAlpha(fskill[0]),
+	worldTooltipZ(fskill[1]),
+	worldTooltipActive(skill[0]),
+	worldTooltipPlayer(skill[1]),
+	worldTooltipInit(skill[3]),
+	worldTooltipFadeDelay(skill[4]),
+	worldTooltipIgnoreDrawing(skill[5]),
+	worldTooltipRequiresButtonHeld(skill[6])
 {
 	int c;
 	// add the entity to the entity list
@@ -437,6 +450,38 @@ void actSpriteNametag(Entity* my)
 	return;
 }
 
+void actFlame(Entity* my)
+{
+	// dummy function
+	return;
+}
+
+void actSpriteWorldTooltip(Entity* my)
+{
+	// dummy function
+	return;
+}
+
+void actSpriteWorldTooltip(Entity* my);
+
+void actGoldBag(Entity* my)
+{
+	// dummy function
+	return;
+}
+
+void actSwitch(Entity* my)
+{
+	// dummy function
+	return;
+}
+
+void actItem(Entity* my)
+{
+	// dummy function
+	return;
+}
+
 int playerEntityMatchesUid(Uint32 uid)
 {
 	return -1;
@@ -451,5 +496,15 @@ bool Entity::isPlayerHeadSprite()
 bool monsterChangesColorWhenAlly(Stat* myStats, Entity* entity)
 {
 	// dummy function
+	return false;
+}
+
+Entity* uidToEntity(Sint32 uidnum)
+{
+	return nullptr;
+}
+
+bool Entity::bEntityHighlightedForPlayer(const int player) const
+{
 	return false;
 }

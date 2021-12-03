@@ -39,7 +39,10 @@
 #include "mod_tools.hpp"
 #include "lobbies.hpp"
 #include "interface/ui.hpp"
+#include "ui/GameUI.hpp"
 #include <limits>
+#include "ui/Frame.hpp"
+#include "ui/Field.hpp"
 
 #include "UnicodeDecoder.h"
 
@@ -210,6 +213,7 @@ Uint32 networkTickrate = 0;
 bool gameloopFreezeEntities = false;
 Uint32 serverSchedulePlayerHealthUpdate = 0;
 Uint32 serverLastPlayerHealthUpdate = 0;
+Frame* cursorFrame = nullptr;
 
 /*-------------------------------------------------------------------------------
 
@@ -226,11 +230,16 @@ void gameLogic(void)
 	Entity* entity;
 	int c = 0;
 	Uint32 i = 0, j;
-	FILE* fp;
 	deleteent_t* deleteent;
 	bool entitydeletedself;
-	int auto_appraise_lowest_time = std::numeric_limits<int>::max();
-	Item* auto_appraise_target = NULL;
+
+	int auto_appraise_lowest_time[MAXPLAYERS];
+	Item* auto_appraise_target[MAXPLAYERS];
+	for ( int i = 0; i < MAXPLAYERS; ++i )
+	{
+		auto_appraise_target[i] = nullptr;
+		auto_appraise_lowest_time[i] = std::numeric_limits<int>::max();
+	}
 
 	if ( creditstage > 0 )
 	{
@@ -890,7 +899,59 @@ void gameLogic(void)
 
 			//if( TICKS_PER_SECOND )
 			//generatePathMaps();
+			bool debugMonsterTimer = false && !gamePaused;
+			if ( debugMonsterTimer )
+			{
+				printlog("loop start");
+			}
+			real_t accum = 0.0;
 			DebugStats.eventsT3 = std::chrono::high_resolution_clock::now();
+
+			// run world UI entities
+			for ( node = map.worldUI->first; node != nullptr; node = nextnode )
+			{
+				nextnode = node->next;
+				entity = (Entity*)node->element;
+				if ( entity && !entity->ranbehavior )
+				{
+					if ( !gamePaused || (multiplayer && !client_disconnected[0]) )
+					{
+						++entity->ticks;
+					}
+					if ( entity->behavior != nullptr )
+					{
+						if ( !gamePaused || (multiplayer && !client_disconnected[0]) )
+						{
+							(*entity->behavior)(entity);
+						}
+						if ( entitiesdeleted.first != nullptr )
+						{
+							entitydeletedself = false;
+							for ( node2 = entitiesdeleted.first; node2 != nullptr; node2 = node2->next )
+							{
+								if ( entity == (Entity*)node2->element )
+								{
+									//printlog("DEBUG: Entity deleted self, sprite: %d", entity->sprite);
+									entitydeletedself = true;
+									break;
+								}
+							}
+							if ( entitydeletedself == false )
+							{
+								entity->ranbehavior = true;
+							}
+							nextnode = map.worldUI->first;
+							list_FreeAll(&entitiesdeleted);
+						}
+						else
+						{
+							entity->ranbehavior = true;
+							nextnode = node->next;
+						}
+					}
+				}
+			}
+
 			for ( node = map.entities->first; node != nullptr; node = nextnode )
 			{
 				nextnode = node->next;
@@ -917,6 +978,8 @@ void gameLogic(void)
 						}
 						int ox = -1;
 						int oy = -1;
+						auto t = std::chrono::high_resolution_clock::now();
+
 						if ( !gamePaused || (multiplayer && !client_disconnected[0]) )
 						{
 							ox = static_cast<int>(entity->x) >> 4;
@@ -935,7 +998,6 @@ void gameLogic(void)
 								printlog("DEBUG: Starting Entity sprite: %d", entity->sprite);
 							}*/
 							(*entity->behavior)(entity);
-
 						}
 						if ( entitiesdeleted.first != nullptr )
 						{
@@ -978,6 +1040,14 @@ void gameLogic(void)
 							}
 							entity->ranbehavior = true;
 							nextnode = node->next;
+							if ( debugMonsterTimer && entity->behavior == &actMonster )
+							{
+								auto t2 = std::chrono::high_resolution_clock::now();
+								printlog("%d: %d %f", entity->sprite, entity->monsterState,
+									1000 * std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t).count());
+								accum += 1000 * std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t).count();
+							}
+
 						}
 					}
 				}
@@ -1006,7 +1076,7 @@ void gameLogic(void)
 								messagePlayerColor(parent->skill[2], color, language[3746], items[item->type].name_unidentified);
 								if ( pickedUp )
 								{
-									if ( parent->skill[2] == 0 )
+									if ( parent->skill[2] == 0 || (parent->skill[2] > 0 && splitscreen) )
 									{
 										// pickedUp is the new inventory stack for server, free the original items
 										free(item);
@@ -1015,12 +1085,16 @@ void gameLogic(void)
 										{
 											useItem(pickedUp, parent->skill[2]);
 										}
-										if ( magicBoomerangHotbarSlot >= 0 )
+
+										auto& hotbar_t = players[parent->skill[2]]->hotbar;
+										auto& hotbar = hotbar_t.slots();
+
+										if ( hotbar_t.magicBoomerangHotbarSlot >= 0 )
 										{
-											hotbar[magicBoomerangHotbarSlot].item = pickedUp->uid;
+											hotbar[hotbar_t.magicBoomerangHotbarSlot].item = pickedUp->uid;
 											for ( int i = 0; i < NUM_HOTBAR_SLOTS; ++i )
 											{
-												if ( i != magicBoomerangHotbarSlot && hotbar[i].item == pickedUp->uid )
+												if ( i != hotbar_t.magicBoomerangHotbarSlot && hotbar[i].item == pickedUp->uid )
 												{
 													hotbar[i].item = 0;
 												}
@@ -1037,10 +1111,13 @@ void gameLogic(void)
 					}
 
 					// hack to fix these things from breaking everything...
-					hudarm = nullptr;
-					hudweapon = nullptr;
-					magicLeftHand = nullptr;
-					magicRightHand = nullptr;
+					for ( int i = 0; i < MAXPLAYERS; ++i )
+					{
+						players[i]->hud.arm = nullptr;
+						players[i]->hud.weapon = nullptr;
+						players[i]->hud.magicLeftHand = nullptr;
+						players[i]->hud.magicRightHand = nullptr;
+					}
 
 					// stop all sounds
 #ifdef USE_FMOD
@@ -1075,18 +1152,18 @@ void gameLogic(void)
 					for ( c = 0; c < MAXPLAYERS; ++c )
 					{
 						assailantTimer[c] = 0;
-						if ( c > 0 && !client_disconnected[c] )
-						{
-							if ( openedChest[c] )
-							{
-								openedChest[c]->closeChestServer();
-							}
-						}
-						else if ( c == 0 )
+						if ( players[c]->isLocalPlayer() )
 						{
 							if ( openedChest[c] )
 							{
 								openedChest[c]->closeChest();
+							}
+						}
+						else if ( c > 0 && !client_disconnected[c] )
+						{
+							if ( openedChest[c] )
+							{
+								openedChest[c]->closeChestServer();
 							}
 						}
 					}
@@ -1097,7 +1174,7 @@ void gameLogic(void)
 					loading = true;
 					drawClearBuffers();
 					int w, h;
-					TTF_SizeUTF8(ttf16, language[709], &w, &h);
+					getSizeOfText(ttf16, language[709], &w, &h);
 					ttfPrintText(ttf16, (xres - w) / 2, (yres - h) / 2, language[709]);
 
 					GO_SwapBuffers(screen);
@@ -1130,7 +1207,7 @@ void gameLogic(void)
 								{
 									node_t* newNode = list_AddNodeLast(&tempFollowers[c]);
 									newNode->element = followerStats->copyStats();
-//									newNode->deconstructor = &followerStats->~Stat;
+									newNode->deconstructor = &statDeconstructor;
 									newNode->size = sizeof(followerStats);
 								}
 							}
@@ -1261,11 +1338,17 @@ void gameLogic(void)
 						conductGameChallenges[CONDUCT_MODDED] = 1;
 					}
 
-					minimapPings.clear(); // clear minimap pings
 					globalLightModifierActive = GLOBAL_LIGHT_MODIFIER_STOPPED;
 
 					// clear follower menu entities.
-					FollowerMenu.closeFollowerMenuGUI(true);
+					for ( int i = 0; i < MAXPLAYERS; ++i )
+					{
+						minimapPings[i].clear(); // clear minimap pings
+						if ( players[i]->isLocalPlayer() )
+						{
+							FollowerMenu[i].closeFollowerMenuGUI(true);
+						}
+					}
 
 					assignActions(&map);
 					generatePathMaps();
@@ -1287,7 +1370,7 @@ void gameLogic(void)
 								}
 							}
 						}
-						messagePlayer(clientnum, language[2599]);
+						messageLocalPlayers(language[2599]);
 
 						// undo shopkeeper grudge
 						swornenemies[SHOPKEEPER][HUMAN] = false;
@@ -1312,39 +1395,39 @@ void gameLogic(void)
 
 					if ( !secretlevel )
 					{
-						messagePlayer(clientnum, language[710], currentlevel);
+						messageLocalPlayers(language[710], currentlevel);
 					}
 					else
 					{
-						messagePlayer(clientnum, language[711], map.name);
+						messageLocalPlayers(language[711], map.name);
 					}
 					if ( !secretlevel && result )
 					{
 						switch ( currentlevel )
 						{
 							case 2:
-								messagePlayer(clientnum, language[712]);
+								messageLocalPlayers(language[712]);
 								break;
 							case 3:
-								messagePlayer(clientnum, language[713]);
+								messageLocalPlayers(language[713]);
 								break;
 							case 7:
-								messagePlayer(clientnum, language[714]);
+								messageLocalPlayers(language[714]);
 								break;
 							case 8:
-								messagePlayer(clientnum, language[715]);
+								messageLocalPlayers(language[715]);
 								break;
 							case 11:
-								messagePlayer(clientnum, language[716]);
+								messageLocalPlayers(language[716]);
 								break;
 							case 13:
-								messagePlayer(clientnum, language[717]);
+								messageLocalPlayers(language[717]);
 								break;
 							case 16:
-								messagePlayer(clientnum, language[718]);
+								messageLocalPlayers(language[718]);
 								break;
 							case 18:
-								messagePlayer(clientnum, language[719]);
+								messageLocalPlayers(language[719]);
 								break;
 							default:
 								break;
@@ -1352,15 +1435,15 @@ void gameLogic(void)
 					}
 					if ( MFLAG_DISABLETELEPORT || MFLAG_DISABLEOPENING )
 					{
-						messagePlayer(clientnum, language[2382]);
+						messageLocalPlayers(language[2382]);
 					}
 					if ( MFLAG_DISABLELEVITATION )
 					{
-						messagePlayer(clientnum, language[2383]);
+						messageLocalPlayers(language[2383]);
 					}
 					if ( MFLAG_DISABLEDIGGING )
 					{
-						messagePlayer(clientnum, language[2450]);
+						messageLocalPlayers(language[2450]);
 					}
 					loadnextlevel = false;
 					loading = false;
@@ -1426,7 +1509,7 @@ void gameLogic(void)
 
 									node_t* newNode = list_AddNodeLast(&monster->children);
 									newNode->element = tempStats->copyStats();
-//									newNode->deconstructor = &tempStats->~Stat;
+									newNode->deconstructor = &statDeconstructor;
 									newNode->size = sizeof(tempStats);
 
 									Stat* monsterStats = (Stat*)newNode->element;
@@ -1485,9 +1568,9 @@ void gameLogic(void)
 										serverUpdateAllyStat(c, monster->getUID(), monsterStats->LVL, monsterStats->HP, monsterStats->MAXHP, monsterStats->type);
 									}
 
-									if ( !FollowerMenu.recentEntity && c == clientnum )
+									if ( !FollowerMenu[c].recentEntity && players[c]->isLocalPlayer() )
 									{
-										FollowerMenu.recentEntity = monster;
+										FollowerMenu[c].recentEntity = monster;
 									}
 								}
 								else
@@ -1537,7 +1620,16 @@ void gameLogic(void)
 					break;
 				}
 			}
+			if ( debugMonsterTimer )
+			{
+				printlog("accum: %f", accum);
+			}
 			for ( node = map.entities->first; node != nullptr; node = node->next )
+			{
+				entity = (Entity*)node->element;
+				entity->ranbehavior = false;
+			}
+			for ( node = map.worldUI->first; node != nullptr; node = node->next )
 			{
 				entity = (Entity*)node->element;
 				entity->ranbehavior = false;
@@ -1637,30 +1729,18 @@ void gameLogic(void)
 					{
 						// regained connection
 						losingConnection[c] = false;
-						int i;
-						for ( i = 0; i < MAXPLAYERS; i++ )
-						{
-							messagePlayer(i, language[724], c, stats[c]->name);
-						}
+						messageLocalPlayers(language[724], c, stats[c]->name);
 					}
 					else if ( !losingConnection[c] && ticks - client_keepalive[c] == TICKS_PER_SECOND * 30 - 1 )
 					{
 						// 30 second timer
 						losingConnection[c] = true;
-						int i;
-						for ( i = 0; i < MAXPLAYERS; i++ )
-						{
-							messagePlayer(clientnum, language[725], c, stats[c]->name);
-						}
+						messageLocalPlayers(language[725], c, stats[c]->name);
 					}
 					else if ( !client_disconnected[c] && ticks - client_keepalive[c] >= TICKS_PER_SECOND * 45 - 1 )
 					{
 						// additional 15 seconds (kick time)
-						int i;
-						for ( i = 0; i < MAXPLAYERS; i++ )
-						{
-							messagePlayer(clientnum, language[726], c, stats[c]->name);
-						}
+						messageLocalPlayers(language[726], c, stats[c]->name);
 						strcpy((char*)net_packet->data, "KICK");
 						net_packet->address.host = net_clients[c - 1].host;
 						net_packet->address.port = net_clients[c - 1].port;
@@ -1696,160 +1776,188 @@ void gameLogic(void)
 				client_selected[j] = NULL;
 			}
 
-			bool tooManySpells = (list_Size(&spellList) >= INVENTORY_SIZEX * 3);
-			int backpack_sizey = 3;
-			if ( stats[clientnum]->cloak && stats[clientnum]->cloak->type == CLOAK_BACKPACK 
-				&& (shouldInvertEquipmentBeatitude(stats[clientnum]) ? abs(stats[clientnum]->cloak->beatitude) >= 0 : stats[clientnum]->cloak->beatitude >= 0) )
-			{
-				backpack_sizey = 4;
-			}
+			// world UI
+			Player::WorldUI_t::handleTooltips();
 
-			if ( tooManySpells && gui_mode == GUI_MODE_INVENTORY && inventory_mode == INVENTORY_MODE_SPELL )
+			int backpack_sizey[MAXPLAYERS];
+
+			for ( int player = 0; player < MAXPLAYERS; ++player )
 			{
-				INVENTORY_SIZEY = 4 + ((list_Size(&spellList) - (INVENTORY_SIZEX * 3)) / INVENTORY_SIZEX);
-			}
-			else if ( backpack_sizey == 4 )
-			{
-				INVENTORY_SIZEY = 4;
-			}
-			else
-			{
-				if ( INVENTORY_SIZEY > 3 && !tooManySpells )
+				if ( !players[player]->isLocalPlayer() )
 				{
-					// we should rearrange our spells.
-					for ( node_t* node = stats[clientnum]->inventory.first; node != NULL; node = node->next )
+					continue;
+				}
+				backpack_sizey[player] = players[player]->inventoryUI.DEFAULT_INVENTORY_SIZEY;
+				const int inventorySizeX = players[player]->inventoryUI.getSizeX();
+				auto& playerInventory = players[player]->inventoryUI;
+
+				bool tooManySpells = (list_Size(&players[player]->magic.spellList) >= inventorySizeX * playerInventory.DEFAULT_INVENTORY_SIZEY);
+				if ( stats[player]->cloak && stats[player]->cloak->type == CLOAK_BACKPACK
+					&& (shouldInvertEquipmentBeatitude(stats[player]) ? abs(stats[player]->cloak->beatitude) >= 0 : stats[player]->cloak->beatitude >= 0) )
+				{
+					backpack_sizey[player] = playerInventory.DEFAULT_INVENTORY_SIZEY + playerInventory.getPlayerBackpackBonusSizeY();
+				}
+
+				if ( tooManySpells && players[player]->gui_mode == GUI_MODE_INVENTORY && players[player]->inventory_mode == INVENTORY_MODE_SPELL )
+				{
+					playerInventory.setSizeY((playerInventory.DEFAULT_INVENTORY_SIZEY + 1)
+						+ ((list_Size(&players[player]->magic.spellList) - (inventorySizeX * playerInventory.DEFAULT_INVENTORY_SIZEY)) / inventorySizeX));
+				}
+				else if ( backpack_sizey[player] == playerInventory.DEFAULT_INVENTORY_SIZEY + playerInventory.getPlayerBackpackBonusSizeY() )
+				{
+					playerInventory.setSizeY(playerInventory.DEFAULT_INVENTORY_SIZEY + playerInventory.getPlayerBackpackBonusSizeY());
+				}
+				else
+				{
+					if ( playerInventory.getSizeY() > playerInventory.DEFAULT_INVENTORY_SIZEY && !tooManySpells )
 					{
-						int scanx = 0;
-						int scany = 0;
-						bool notfree = false;
-						bool foundaspot = false;
-						Item* item = (Item*)node->element;
-						if ( itemCategory(item) != SPELL_CAT )
+						// we should rearrange our spells.
+						for ( node_t* node = stats[player]->inventory.first; node != NULL; node = node->next )
 						{
-							continue;
-						}
-						if ( item->appearance >= 1000 )
-						{
-							continue; // shaman spells.
-						}
-						while ( 1 )
-						{
-							for ( scany = 0; scany < 3; scany++ )
+							int scanx = 0;
+							int scany = 0;
+							bool notfree = false;
+							bool foundaspot = false;
+							Item* item = (Item*)node->element;
+							if ( itemCategory(item) != SPELL_CAT )
 							{
-								node_t* node2;
-								for ( node2 = stats[clientnum]->inventory.first; node2 != NULL; node2 = node2->next )
+								continue;
+							}
+							if ( item->appearance >= 1000 )
+							{
+								continue; // shaman spells.
+							}
+							while ( 1 )
+							{
+								for ( scany = 0; scany < players[player]->inventoryUI.DEFAULT_INVENTORY_SIZEY; scany++ )
 								{
-									Item* tempItem = (Item*)node2->element;
-									if ( tempItem == item )
+									node_t* node2;
+									for ( node2 = stats[player]->inventory.first; node2 != NULL; node2 = node2->next )
 									{
-										continue;
-									}
-									if ( tempItem )
-									{
-										if ( tempItem->x == scanx && tempItem->y == scany )
+										Item* tempItem = (Item*)node2->element;
+										if ( tempItem == item )
 										{
-											if ( itemCategory(tempItem) == SPELL_CAT )
+											continue;
+										}
+										if ( tempItem )
+										{
+											if ( tempItem->x == scanx && tempItem->y == scany )
 											{
-												notfree = true;  //Both spells. Can't fit in the same slot.
+												if ( itemCategory(tempItem) == SPELL_CAT )
+												{
+													notfree = true;  //Both spells. Can't fit in the same slot.
+												}
 											}
 										}
 									}
+									if ( notfree )
+									{
+										notfree = false;
+										continue;
+									}
+									item->x = scanx;
+									item->y = scany;
+									foundaspot = true;
+									break;
 								}
-								if ( notfree )
+								if ( foundaspot )
 								{
-									notfree = false;
-									continue;
+									break;
 								}
-								item->x = scanx;
-								item->y = scany;
-								foundaspot = true;
-								break;
+								scanx++;
 							}
-							if ( foundaspot )
-							{
-								break;
-							}
-							scanx++;
 						}
 					}
+					players[player]->inventoryUI.setSizeY(players[player]->inventoryUI.DEFAULT_INVENTORY_SIZEY);
 				}
-				INVENTORY_SIZEY = 3;
 			}
 
 			DebugStats.eventsT5 = std::chrono::high_resolution_clock::now();
 
-			int bloodCount = 0;
-			for ( node = stats[clientnum]->inventory.first; node != NULL; node = nextnode )
+			for ( int player = 0; player < MAXPLAYERS; ++player )
 			{
-				nextnode = node->next;
-				Item* item = (Item*)node->element;
-				if ( !item )
+				if ( !players[player]->isLocalPlayer() )
 				{
 					continue;
 				}
-				// unlock achievements for special collected items
-				switch ( item->type )
-				{
-					case ARTIFACT_SWORD:
-						steamAchievement("BARONY_ACH_KING_ARTHURS_BLADE");
-						break;
-					case ARTIFACT_MACE:
-						steamAchievement("BARONY_ACH_SPUD_LORD");
-						break;
-					case ARTIFACT_AXE:
-						steamAchievement("BARONY_ACH_THANKS_MR_SKELTAL");
-						break;
-					case ARTIFACT_SPEAR:
-						steamAchievement("BARONY_ACH_SPEAR_OF_DESTINY");
-						break;
-					default:
-						break;
-				}
 
-				if ( item->type == FOOD_BLOOD )
+				int bloodCount = 0;
+				for ( node = stats[player]->inventory.first; node != NULL; node = nextnode )
 				{
-					bloodCount += item->count;
-					if ( bloodCount >= 20 )
+					nextnode = node->next;
+					Item* item = (Item*)node->element;
+					if ( !item )
 					{
-						steamAchievement("BARONY_ACH_BLOOD_VESSELS");
+						continue;
 					}
-				}
-
-				if ( itemCategory(item) == WEAPON )
-				{
-					if ( item->beatitude >= 10 )
+					// unlock achievements for special collected items
+					switch ( item->type )
 					{
-						steamAchievement("BARONY_ACH_BLESSED");
+						case ARTIFACT_SWORD:
+							steamAchievement("BARONY_ACH_KING_ARTHURS_BLADE");
+							break;
+						case ARTIFACT_MACE:
+							steamAchievement("BARONY_ACH_SPUD_LORD");
+							break;
+						case ARTIFACT_AXE:
+							steamAchievement("BARONY_ACH_THANKS_MR_SKELTAL");
+							break;
+						case ARTIFACT_SPEAR:
+							steamAchievement("BARONY_ACH_SPEAR_OF_DESTINY");
+							break;
+						default:
+							break;
 					}
-				}
 
-				// drop any inventory items you don't have room for
-				if ( itemCategory(item) != SPELL_CAT && (item->x >= INVENTORY_SIZEX || item->y >= backpack_sizey) )
-				{
-					messagePlayer(clientnum, language[727], item->getName());
-					bool droppedAll = false;
-					while ( item && item->count > 1 )
+					if ( item->type == FOOD_BLOOD )
 					{
-						droppedAll = dropItem(item, clientnum);
-						if ( droppedAll )
+						bloodCount += item->count;
+						if ( bloodCount >= 20 )
 						{
-							item = nullptr;
+							steamAchievement("BARONY_ACH_BLOOD_VESSELS");
 						}
 					}
-					if ( !droppedAll )
+
+					if ( itemCategory(item) == WEAPON )
 					{
-						dropItem(item, clientnum);
-					}
-				}
-				else
-				{
-					if ( auto_appraise_new_items && appraisal_timer == 0 && !(item->identified) )
-					{
-						int appraisal_time = getAppraisalTime(item);
-						if (appraisal_time < auto_appraise_lowest_time)
+						if ( item->beatitude >= 10 )
 						{
-							auto_appraise_target = item;
-							auto_appraise_lowest_time = appraisal_time;
+							steamAchievement("BARONY_ACH_BLESSED");
+						}
+					}
+
+					// drop any inventory items you don't have room for
+					if ( itemCategory(item) != SPELL_CAT 
+						&& item->x != Player::PaperDoll_t::ITEM_PAPERDOLL_COORDINATE
+						&& item->x != Player::PaperDoll_t::ITEM_RETURN_TO_INVENTORY_COORDINATE
+						&& (item->x >= players[player]->inventoryUI.getSizeX() || item->y >= backpack_sizey[player]) )
+					{
+						messagePlayer(player, language[727], item->getName());
+						bool droppedAll = false;
+						while ( item && item->count > 1 )
+						{
+							droppedAll = dropItem(item, player);
+							if ( droppedAll )
+							{
+								item = nullptr;
+							}
+						}
+						if ( !droppedAll )
+						{
+							dropItem(item, player);
+						}
+					}
+					else
+					{
+						if ( auto_appraise_new_items && players[player]->inventoryUI.appraisal.timer == 0 
+							&& !(item->identified) )
+						{
+							int appraisal_time = players[player]->inventoryUI.appraisal.getAppraisalTime(item);
+							if ( appraisal_time < auto_appraise_lowest_time[player] )
+							{
+								auto_appraise_target[player] = item;
+								auto_appraise_lowest_time[player] = appraisal_time;
+							}
 						}
 					}
 				}
@@ -1891,12 +1999,12 @@ void gameLogic(void)
 				{
 					// 30 second timer
 					losingConnection[0] = true;
-					messagePlayer(clientnum, language[729]);
+					messageLocalPlayers(language[729]);
 				}
 				else if ( !client_disconnected[c] && ticks - client_keepalive[0] >= TICKS_PER_SECOND * 45 - 1 )
 				{
 					// additional 15 seconds (disconnect time)
-					messagePlayer(clientnum, language[730]);
+					messageLocalPlayers(language[730]);
 
 					button_t* button;
 					pauseGame(2, 0);
@@ -2062,6 +2170,51 @@ void gameLogic(void)
 							net_packet->address.port = net_server.port;
 							net_packet->len = 9;
 							sendPacket(net_sock, -1, net_packet, 0);
+						}
+					}
+				}
+			}
+
+			// run world UI entities
+			for ( node = map.worldUI->first; node != nullptr; node = nextnode )
+			{
+				nextnode = node->next;
+				entity = (Entity*)node->element;
+				if ( entity && !entity->ranbehavior )
+				{
+					if ( !gamePaused || (multiplayer && !client_disconnected[0]) )
+					{
+						++entity->ticks;
+					}
+					if ( entity->behavior != nullptr )
+					{
+						if ( !gamePaused || (multiplayer && !client_disconnected[0]) )
+						{
+							(*entity->behavior)(entity);
+						}
+						if ( entitiesdeleted.first != nullptr )
+						{
+							entitydeletedself = false;
+							for ( node2 = entitiesdeleted.first; node2 != nullptr; node2 = node2->next )
+							{
+								if ( entity == (Entity*)node2->element )
+								{
+									//printlog("DEBUG: Entity deleted self, sprite: %d", entity->sprite);
+									entitydeletedself = true;
+									break;
+								}
+							}
+							if ( entitydeletedself == false )
+							{
+								entity->ranbehavior = true;
+							}
+							nextnode = map.worldUI->first;
+							list_FreeAll(&entitiesdeleted);
+						}
+						else
+						{
+							entity->ranbehavior = true;
+							nextnode = node->next;
 						}
 					}
 				}
@@ -2272,25 +2425,37 @@ void gameLogic(void)
 				entity = (Entity*)node->element;
 				entity->ranbehavior = false;
 			}
-			bool tooManySpells = (list_Size(&spellList) >= INVENTORY_SIZEX * 3);
-			int backpack_sizey = 3;
+			for ( node = map.worldUI->first; node != nullptr; node = node->next )
+			{
+				entity = (Entity*)node->element;
+				entity->ranbehavior = false;
+			}
+
+			// world UI
+			Player::WorldUI_t::handleTooltips();
+
+			auto& playerInventory = players[clientnum]->inventoryUI;
+			const int inventorySizeX = playerInventory.getSizeX();
+			bool tooManySpells = (list_Size(&players[clientnum]->magic.spellList) >= inventorySizeX * playerInventory.DEFAULT_INVENTORY_SIZEY);
+			int backpack_sizey = playerInventory.DEFAULT_INVENTORY_SIZEY;
 			if ( stats[clientnum]->cloak && stats[clientnum]->cloak->type == CLOAK_BACKPACK 
 				&& (shouldInvertEquipmentBeatitude(stats[clientnum]) ? abs(stats[clientnum]->cloak->beatitude) >= 0 : stats[clientnum]->cloak->beatitude >= 0) )
 			{
-				backpack_sizey = 4;
+				backpack_sizey += playerInventory.getPlayerBackpackBonusSizeY();
 			}
 
-			if ( tooManySpells && gui_mode == GUI_MODE_INVENTORY && inventory_mode == INVENTORY_MODE_SPELL )
+			if ( tooManySpells && players[clientnum]->gui_mode == GUI_MODE_INVENTORY && players[clientnum]->inventory_mode == INVENTORY_MODE_SPELL )
 			{
-				INVENTORY_SIZEY = 4 + ((list_Size(&spellList) - (INVENTORY_SIZEX * 3)) / INVENTORY_SIZEX);
+				playerInventory.setSizeY((playerInventory.DEFAULT_INVENTORY_SIZEY + 1)
+					+ ((list_Size(&players[clientnum]->magic.spellList) - (inventorySizeX * playerInventory.DEFAULT_INVENTORY_SIZEY)) / inventorySizeX));
 			}
-			else if ( backpack_sizey == 4 )
+			else if ( backpack_sizey == playerInventory.DEFAULT_INVENTORY_SIZEY + playerInventory.getPlayerBackpackBonusSizeY() )
 			{
-				INVENTORY_SIZEY = 4;
+				playerInventory.setSizeY(playerInventory.DEFAULT_INVENTORY_SIZEY + playerInventory.getPlayerBackpackBonusSizeY());
 			}
 			else
 			{
-				if ( INVENTORY_SIZEY > 3 && !tooManySpells )
+				if ( playerInventory.getSizeY() > playerInventory.DEFAULT_INVENTORY_SIZEY && !tooManySpells )
 				{
 					// we should rearrange our spells.
 					for ( node_t* node = stats[clientnum]->inventory.first; node != NULL; node = node->next )
@@ -2310,7 +2475,7 @@ void gameLogic(void)
 						}
 						while ( 1 )
 						{
-							for ( scany = 0; scany < 3; scany++ )
+							for ( scany = 0; scany < playerInventory.DEFAULT_INVENTORY_SIZEY; scany++ )
 							{
 								node_t* node2;
 								for ( node2 = stats[clientnum]->inventory.first; node2 != NULL; node2 = node2->next )
@@ -2349,7 +2514,7 @@ void gameLogic(void)
 						}
 					}
 				}
-				INVENTORY_SIZEY = 3;
+				playerInventory.setSizeY(playerInventory.DEFAULT_INVENTORY_SIZEY);
 			}
 
 			for ( node = stats[clientnum]->inventory.first; node != NULL; node = nextnode )
@@ -2393,7 +2558,10 @@ void gameLogic(void)
 				}
 
 				// drop any inventory items you don't have room for
-				if ( itemCategory(item) != SPELL_CAT && (item->x >= INVENTORY_SIZEX || item->y >= backpack_sizey) )
+				if ( itemCategory(item) != SPELL_CAT 
+					&& item->x != Player::PaperDoll_t::ITEM_PAPERDOLL_COORDINATE
+					&& item->x != Player::PaperDoll_t::ITEM_RETURN_TO_INVENTORY_COORDINATE
+					&& (item->x >= players[clientnum]->inventoryUI.getSizeX() || item->y >= backpack_sizey) )
 				{
 					messagePlayer(clientnum, language[727], item->getName());
 					bool droppedAll = false;
@@ -2412,13 +2580,13 @@ void gameLogic(void)
 				}
 				else
 				{
-					if ( auto_appraise_new_items && appraisal_timer == 0 && !(item->identified) )
+					if ( auto_appraise_new_items && players[clientnum]->inventoryUI.appraisal.timer == 0 && !(item->identified) )
 					{
-						int appraisal_time = getAppraisalTime(item);
-						if (appraisal_time < auto_appraise_lowest_time)
+						int appraisal_time = players[clientnum]->inventoryUI.appraisal.getAppraisalTime(item);
+						if (appraisal_time < auto_appraise_lowest_time[clientnum])
 						{
-							auto_appraise_target = item;
-							auto_appraise_lowest_time = appraisal_time;
+							auto_appraise_target[clientnum] = item;
+							auto_appraise_lowest_time[clientnum] = appraisal_time;
 						}
 					}
 				}
@@ -2435,14 +2603,15 @@ void gameLogic(void)
 		}
 
 		// Automatically identify items, shortest time required first
-		if ( auto_appraise_target != NULL )
+		for ( int i = 0; i < MAXPLAYERS; ++i )
 		{
-			//Cleanup identify GUI gamecontroller code here.
-			selectedIdentifySlot = -1;
-
-			//identifygui_active = false;
-			identifygui_appraising = true;
-			identifyGUIIdentify(auto_appraise_target);
+			if ( players[i]->isLocalPlayer() )
+			{
+				if ( auto_appraise_target[i] != NULL )
+				{
+					players[i]->inventoryUI.appraisal.appraiseItem(auto_appraise_target[i]);
+				}
+			}
 		}
 	}
 }
@@ -2460,10 +2629,23 @@ void gameLogic(void)
 
 void handleButtons(void)
 {
+	if ( gui ) 
+	{
+		Frame::result_t gui_result = gui->process();
+		gui->draw();
+		if ( !gui_result.usable ) {
+			return;
+		}
+	}
 	node_t* node;
 	node_t* nextnode;
 	button_t* button;
 	int w = 0, h = 0;
+
+	Sint32 mousex = inputs.getMouse(clientnum, Inputs::MouseInputs::X);
+	Sint32 mousey = inputs.getMouse(clientnum, Inputs::MouseInputs::Y);
+	Sint32 omousex = inputs.getMouse(clientnum, Inputs::MouseInputs::OX);
+	Sint32 omousey = inputs.getMouse(clientnum, Inputs::MouseInputs::OY);
 
 	// handle buttons
 	for ( node = button_l.first; node != NULL; node = nextnode )
@@ -2511,7 +2693,7 @@ void handleButtons(void)
 		{
 			continue;    // invisible buttons are not processed
 		}
-		TTF_SizeUTF8(ttf12, button->label, &w, &h);
+		getSizeOfText(ttf12, button->label, &w, &h);
 		if ( subwindow && !button->focused )
 		{
 			// unfocused buttons do not work when a subwindow is active
@@ -2525,12 +2707,12 @@ void handleButtons(void)
 				button->pressed = true;
 				button->needclick = false;
 			}
-			if (button->joykey != -1 && *inputPressed(button->joykey) && rebindaction == -1 )
+			if (button->joykey != -1 && inputs.bControllerRawInputPressed(clientnum, button->joykey) && rebindaction == -1 )
 			{
 				button->pressed = true;
 				button->needclick = false;
 			}
-			if ( mousestatus[SDL_BUTTON_LEFT] )
+			if ( inputs.bMouseLeft(clientnum) )
 			{
 				if ( mousex >= button->x && mousex < button->x + button->sizex && omousex >= button->x && omousex < button->x + button->sizex )
 				{
@@ -2563,14 +2745,14 @@ void handleButtons(void)
 			{
 				drawDepressed(button->x, button->y, button->x + button->sizex, button->y + button->sizey);
 				ttfPrintText(ttf12, button->x + (button->sizex - w) / 2 - 2, button->y + (button->sizey - h) / 2 + 3, button->label);
-				if ( !mousestatus[SDL_BUTTON_LEFT] && !keystatus[button->key] )
+				if ( !inputs.bMouseLeft(clientnum) && !keystatus[button->key] )
 				{
 					if ( ( omousex >= button->x && omousex < button->x + button->sizex ) || !button->needclick )
 					{
 						if ( ( omousey >= button->y && omousey < button->y + button->sizey ) || !button->needclick )
 						{
 							keystatus[button->key] = false;
-							*inputPressed(button->joykey) = 0;
+							inputs.controllerClearRawInput(clientnum, button->joykey);
 							playSound(139, 64);
 							if ( button->action != NULL )
 							{
@@ -2629,6 +2811,19 @@ void handleEvents(void)
 	int j;
 	int runtimes = 0;
 
+#ifdef NINTENDO
+	// do timer
+	std::chrono::duration<double> msInterval(1.0 / TICKS_PER_SECOND);
+	auto now = std::chrono::steady_clock::now();
+	int framesToDo = (now - lastTick) / msInterval;
+	if (framesToDo) {
+		lastTick = now;
+		for (int c = 0; c < framesToDo; ++c) {
+			timerCallback(0, NULL);
+		}
+	}
+#endif // NINTENDO
+
 	// calculate app rate
 	t = SDL_GetTicks();
 	timesync = t - ot;
@@ -2650,10 +2845,7 @@ void handleEvents(void)
 	}
 	fps = (d / AVERAGEFRAMES) * 1000;
 
-	if (game_controller && game_controller->isActive())
-	{
-		game_controller->handleAnalog();
-	}
+	inputs.updateAllMouse();
 
 	while ( SDL_PollEvent(&event) )   // poll SDL events
 	{
@@ -2807,7 +2999,13 @@ void handleEvents(void)
 			case SDL_MOUSEBUTTONUP: // if a mouse button is released...
 				mousestatus[event.button.button] = 0; // set this mouse button to 0
 				buttonclick = 0; // release any buttons that were being held down
-				gui_clickdrag = false;
+				for ( int i = 0; i < MAXPLAYERS; ++i )
+				{
+					if ( inputs.bPlayerUsingKeyboardControl(i) )
+					{
+						gui_clickdrag[i] = false;
+					}
+				}
 				break;
 			case SDL_MOUSEWHEEL:
 				if ( event.wheel.y > 0 )
@@ -2839,37 +3037,116 @@ void handleEvents(void)
 				mousexrel += event.motion.xrel;
 				mouseyrel += event.motion.yrel;
 
-				if ( !draw_cursor )
+				for ( int i = 0; i < MAXPLAYERS; ++i )
 				{
-					draw_cursor = true;
+					if ( inputs.bPlayerUsingKeyboardControl(i) )
+					{
+						if ( !inputs.getVirtualMouse(i)->draw_cursor && !inputs.getVirtualMouse(i)->lastMovementFromController )
+						{
+							inputs.getVirtualMouse(i)->draw_cursor = true;
+						}
+						if ( event.user.code == 0 ) 
+						{
+							// we use SDL_pushEvent() to push a event.user.code == 1 on a gamepad manipulating a mouse event
+							// default 0 for normal mouse events
+							inputs.getVirtualMouse(i)->lastMovementFromController = false;
+						}
+						break;
+					}
 				}
 				break;
 			case SDL_CONTROLLERBUTTONDOWN: // if joystick button is pressed
-				joystatus[event.cbutton.button] = 1; // set this button's index to 1
+				//joystatus[event.cbutton.button] = 1; // set this button's index to 1
 				lastkeypressed = 301 + event.cbutton.button;
-				if ( event.cbutton.button + 301 == joyimpulses[INJOY_MENU_LEFT_CLICK] && ((!shootmode && gui_mode == GUI_MODE_NONE) || gamePaused) && rebindaction == -1 )
+				if ( event.cbutton.button + 301 == joyimpulses[INJOY_MENU_LEFT_CLICK] && ((!players[clientnum]->shootmode && players[clientnum]->gui_mode == GUI_MODE_NONE) || gamePaused) && rebindaction == -1 )
 				{
 					//Generate a mouse click.
-					SDL_Event e;
-
-					e.type = SDL_MOUSEBUTTONDOWN;
-					e.button.button = SDL_BUTTON_LEFT;
-					e.button.clicks = 1; //Single click.
-					SDL_PushEvent(&e);
+					//SDL_Event e;
+					//
+					//e.type = SDL_MOUSEBUTTONDOWN;
+					//e.button.button = SDL_BUTTON_LEFT;
+					//e.button.clicks = 1; //Single click.
+					//SDL_PushEvent(&e);
 				}
 				break;
 			case SDL_CONTROLLERBUTTONUP: // if joystick button is released
-				joystatus[event.cbutton.button] = 0; // set this button's index to 0
+				//joystatus[event.cbutton.button] = 0; // set this button's index to 0
 				if ( event.cbutton.button + 301 == joyimpulses[INJOY_MENU_LEFT_CLICK] )
 				{
 					//Generate a mouse lift.
-					SDL_Event e;
-
-					e.type = SDL_MOUSEBUTTONUP;
-					e.button.button = SDL_BUTTON_LEFT;
-					SDL_PushEvent(&e);
+					//SDL_Event e;
+					//
+					//e.type = SDL_MOUSEBUTTONUP;
+					//e.button.button = SDL_BUTTON_LEFT;
+					//SDL_PushEvent(&e);
 				}
 				break;
+			case SDL_CONTROLLERDEVICEADDED:
+			{
+				const int id = event.cdevice.which;
+				if ( !SDL_IsGameController(id) )
+				{
+					printlog("Info: device %d is not a game controller! Joysticks are not supported.\n", id);
+					break;
+				}
+
+				bool deviceAlreadyAdded = false;
+				for ( auto& controller : game_controllers )
+				{
+					if ( controller.isActive() && controller.getID() == id )
+					{
+						printlog("(Device %d added, but already in use as game controller.)\n", id);
+						deviceAlreadyAdded = true;
+						break;
+					}
+				}
+
+				if ( deviceAlreadyAdded )
+				{
+					break;
+				}
+
+				// now find a free controller slot.
+				for ( auto& controller : game_controllers )
+				{
+					if ( controller.isActive() )
+					{
+						continue;
+					}
+
+					if ( SDL_IsGameController(id) && controller.open(id) )
+					{
+						printlog("(Device %d successfully initialized as game controller.)\n", id);
+						inputs.addControllerIDToNextAvailableInput(id);
+					}
+					else
+					{
+						printlog("Info: device %d is not a game controller! Joysticks are not supported.\n", id);
+					}
+					break;
+				}
+				break;
+			}
+			case SDL_CONTROLLERDEVICEREMOVED:
+			{
+				// device removed uses a 'joystick id', different to the device added event
+				const int instanceID = event.cdevice.which;
+				SDL_GameController* pad = SDL_GameControllerFromInstanceID(instanceID);
+				if ( !pad )
+				{
+					printlog("(Unknown device removed as game controller, null controller returned.)\n");
+				}
+				for ( auto& controller : game_controllers )
+				{
+					if ( controller.isActive() && controller.getControllerDevice() == pad )
+					{
+						inputs.removeControllerWithDeviceID(controller.getID());
+						printlog("(Device %d removed as game controller, instance id: %d.)\n", controller.getID(), instanceID);
+						controller.close();
+					}
+				}
+				break;
+			}
 			case SDL_JOYHATMOTION:
 				break;
 			case SDL_USEREVENT: // if the game timer has elapsed
@@ -2881,11 +3158,24 @@ void handleEvents(void)
 						sound_update(); //Update FMOD and whatnot.
 #endif
 					}
-					runtimes++;
 					gameLogic();
 					mousexrel = 0;
 					mouseyrel = 0;
+					inputs.updateAllRelMouse();
+					for ( int i = 0; i < MAXPLAYERS; ++i )
+					{
+						if ( inputs.hasController(i) )
+						{
+							inputs.getController(i)->handleRumble();
+							inputs.getController(i)->updateButtonsReleased();
+						}
+					}
 				}
+				else
+				{
+					printlog("overloaded timer! %d", runtimes);
+				}
+				++runtimes;
 				break;
 			case SDL_WINDOWEVENT:
 				if ( event.window.event == SDL_WINDOWEVENT_FOCUS_LOST && mute_audio_on_focus_lost )
@@ -2966,6 +3256,26 @@ void handleEvents(void)
 					}
 #endif
 				}
+				else if (event.window.event == SDL_WINDOWEVENT_RESIZED)
+				{
+					xres = event.window.data1;
+					yres = event.window.data2;
+					if (!changeVideoMode())
+					{
+						printlog("critical error! Attempting to abort safely...\n");
+						mainloop = 0;
+					}
+					if (zbuffer != NULL)
+					{
+						free(zbuffer);
+					}
+					zbuffer = (real_t*)malloc(sizeof(real_t) * xres * yres);
+					if (clickmap != NULL)
+					{
+						free(clickmap);
+					}
+					clickmap = (Entity**)malloc(sizeof(Entity*)*xres * yres);
+				}
 				break;
 				/*case SDL_CONTROLLERAXISMOTION:
 					printlog("Controller axis motion detected.\n");
@@ -3022,6 +3332,14 @@ void handleEvents(void)
 		omousex = mousex;
 		omousey = mousey;
 	}
+
+	inputs.updateAllOMouse();
+	for ( auto& controller : game_controllers )
+	{
+		controller.updateButtons();
+		controller.updateAxis();
+	}
+
 }
 
 /*-------------------------------------------------------------------------------
@@ -3220,6 +3538,943 @@ bool frameRateLimit( Uint32 maxFrameRate, bool resetAccumulator)
 	}
 }
 
+void ingameHud()
+{
+	for ( int player = 0; player < MAXPLAYERS; ++player )
+	{
+		// inventory interface
+		// player not needed to be alive
+		if ( players[player]->isLocalPlayer() && !command
+			&& (*inputPressedForPlayer(player, impulses[IN_STATUS]) || inputs.bControllerInputPressed(player, INJOY_STATUS)) )
+		{
+			*inputPressedForPlayer(player, impulses[IN_STATUS]) = 0;
+			inputs.controllerClearInput(player, INJOY_STATUS);
+
+			if ( players[player]->shootmode )
+			{
+				players[player]->openStatusScreen(GUI_MODE_INVENTORY, INVENTORY_MODE_ITEM);
+			}
+			else
+			{
+				players[player]->closeAllGUIs(CLOSEGUI_ENABLE_SHOOTMODE, CLOSEGUI_CLOSE_ALL);
+			}
+		}
+
+		// spell list
+		// player not needed to be alive
+		if ( players[player]->isLocalPlayer() && !command
+			&& (*inputPressedForPlayer(player, impulses[IN_SPELL_LIST]) || inputs.bControllerInputPressed(player, INJOY_SPELL_LIST)) )   //TODO: Move to function in interface or something?
+		{
+			*inputPressedForPlayer(player, impulses[IN_SPELL_LIST]) = 0;
+			inputs.controllerClearInput(player, INJOY_SPELL_LIST);
+			players[player]->gui_mode = GUI_MODE_INVENTORY;
+			inputs.getUIInteraction(player)->selectedItem = nullptr;
+			players[player]->inventory_mode = INVENTORY_MODE_SPELL;
+
+			if ( players[player]->shootmode )
+			{
+				players[player]->shootmode = false;
+				players[player]->characterSheet.attributespage = 0;
+				//proficienciesPage = 0;
+			}
+		}
+
+		// spellcasting
+		// player needs to be alive
+		if ( players[player]->isLocalPlayerAlive() )
+		{
+			bool hasSpellbook = false;
+			bool tryQuickCast = players[player]->hotbar.faceMenuQuickCast;
+			if ( stats[player]->shield && itemCategory(stats[player]->shield) == SPELLBOOK )
+			{
+				hasSpellbook = true;
+			}
+
+			players[player]->hotbar.faceMenuQuickCast = false;
+
+			if ( !command &&
+				(*inputPressedForPlayer(player, impulses[IN_CAST_SPELL])
+					|| (players[player]->shootmode
+						&& (inputs.bControllerInputPressed(player, INJOY_GAME_CAST_SPELL) || tryQuickCast))
+					|| (hasSpellbook && *inputPressedForPlayer(player, impulses[IN_DEFEND]))
+					|| (hasSpellbook && players[player]->shootmode && inputs.bControllerInputPressed(player, INJOY_GAME_DEFEND)))
+				)
+			{
+				bool allowCasting = true;
+				if ( *inputPressedForPlayer(player, impulses[IN_CAST_SPELL]) || *inputPressedForPlayer(player, impulses[IN_DEFEND]) )
+				{
+					if ( ((impulses[IN_CAST_SPELL] == RIGHT_CLICK_IMPULSE || impulses[IN_DEFEND] == RIGHT_CLICK_IMPULSE)
+						&& players[player]->gui_mode >= GUI_MODE_INVENTORY
+						&& (mouseInsidePlayerInventory(player) || mouseInsidePlayerHotbar(player))
+						) )
+					{
+						allowCasting = false;
+					}
+				}
+
+				if ( (*inputPressedForPlayer(player, impulses[IN_DEFEND]) || (inputs.bControllerInputPressed(player, INJOY_GAME_DEFEND))) && hasSpellbook
+					&& players[player] && players[player]->entity )
+				{
+					if ( players[player]->entity->effectShapeshift != NOTHING )
+					{
+						if ( players[player]->entity->effectShapeshift == CREATURE_IMP )
+						{
+							// imp allowed to cast via spellbook.
+						}
+						else
+						{
+							allowCasting = false;
+						}
+					}
+
+					if ( *inputPressedForPlayer(player, impulses[IN_DEFEND])
+						&& impulses[IN_DEFEND] == 285
+						&& inputs.getUIInteraction(player)->itemMenuOpen ) // bound to right click, has context menu open.
+					{
+						allowCasting = false;
+					}
+					else
+					{
+						if ( allowCasting && stats[player]->EFFECTS[EFF_BLIND] )
+						{
+							messagePlayer(player, language[3863]); // prevent casting of spell.
+							allowCasting = false;
+							*inputPressedForPlayer(player, impulses[IN_DEFEND]) = 0;
+							inputs.controllerClearInput(player, INJOY_GAME_DEFEND);
+						}
+					}
+				}
+
+				if ( allowCasting )
+				{
+					*inputPressedForPlayer(player, impulses[IN_CAST_SPELL]) = 0;
+					if ( players[player]->shootmode )
+					{
+						inputs.controllerClearInput(player, INJOY_GAME_CAST_SPELL);
+					}
+					if ( players[player] && players[player]->entity )
+					{
+						if ( conductGameChallenges[CONDUCT_BRAWLER] || achievementBrawlerMode )
+						{
+							if ( achievementBrawlerMode && conductGameChallenges[CONDUCT_BRAWLER] )
+							{
+								messagePlayer(player, language[2999]); // prevent casting of spell.
+							}
+							else
+							{
+								if ( achievementBrawlerMode && players[player]->magic.selectedSpell() )
+								{
+									messagePlayer(player, language[2998]); // notify no longer eligible for achievement but still cast.
+								}
+								if ( hasSpellbook
+									&& (*inputPressedForPlayer(player, impulses[IN_DEFEND]) || inputs.bControllerInputPressed(player, INJOY_GAME_DEFEND)) )
+								{
+									castSpellInit(players[player]->entity->getUID(), getSpellFromID(getSpellIDFromSpellbook(stats[player]->shield->type)), true);
+								}
+								else
+								{
+									castSpellInit(players[player]->entity->getUID(), players[player]->magic.selectedSpell(), false);
+								}
+								if ( players[player]->magic.selectedSpell() )
+								{
+									conductGameChallenges[CONDUCT_BRAWLER] = 0;
+								}
+							}
+						}
+						else
+						{
+							if ( hasSpellbook && (*inputPressedForPlayer(player, impulses[IN_DEFEND]) || inputs.bControllerInputPressed(player, INJOY_GAME_DEFEND)) )
+							{
+								castSpellInit(players[player]->entity->getUID(), getSpellFromID(getSpellIDFromSpellbook(stats[player]->shield->type)), true);
+							}
+							else
+							{
+								castSpellInit(players[player]->entity->getUID(), players[player]->magic.selectedSpell(), false);
+							}
+						}
+					}
+					*inputPressedForPlayer(player, impulses[IN_DEFEND]) = 0;
+					inputs.controllerClearInput(player, INJOY_GAME_DEFEND);
+				}
+			}
+		}
+
+		if ( !command && *inputPressedForPlayer(player, impulses[IN_TOGGLECHATLOG])
+			|| (players[player]->shootmode && inputs.bControllerInputPressed(player, INJOY_GAME_TOGGLECHATLOG)) )
+		{
+			hide_statusbar = !hide_statusbar;
+			*inputPressedForPlayer(player, impulses[IN_TOGGLECHATLOG]) = 0;
+			inputs.controllerClearInput(player, INJOY_GAME_TOGGLECHATLOG);
+			playSound(139, 64);
+		}
+
+		bool worldUIBlocksFollowerCycle = (
+				players[player]->worldUI.isEnabled()
+				&& players[player]->worldUI.bTooltipInView
+				&& players[player]->worldUI.tooltipsInRange.size() > 1);
+
+		if ( !command && (*inputPressedForPlayer(player, impulses[IN_FOLLOWERMENU_CYCLENEXT])
+				|| (inputs.bControllerInputPressed(player, INJOY_GAME_FOLLOWERMENU_CYCLE)) )
+			)
+		{
+			if ( !worldUIBlocksFollowerCycle && players[player]->shootmode )
+			{
+				//(players[player]->shootmode && !worldUIBlocksFollowerCycle) || FollowerMenu[player].followerMenuIsOpen())) ) -- todo needed?
+
+				// can select next follower in inventory or shootmode
+				FollowerMenu[player].selectNextFollower();
+				players[player]->characterSheet.proficienciesPage = 1;
+				if ( players[player]->shootmode && !players[player]->characterSheet.lock_right_sidebar )
+				{
+					// from now on, allies should be displayed all times
+					//players[player]->openStatusScreen(GUI_MODE_INVENTORY, INVENTORY_MODE_ITEM);
+				}
+				*inputPressedForPlayer(player, impulses[IN_FOLLOWERMENU_CYCLENEXT]) = 0;
+				inputs.controllerClearInput(player, INJOY_GAME_FOLLOWERMENU_CYCLE);
+			}
+		}
+	}
+
+
+	// commands - uses local clientnum only
+	if ( (*inputPressed(impulses[IN_CHAT]) || *inputPressed(impulses[IN_COMMAND])) && !command )
+	{
+		*inputPressed(impulses[IN_CHAT]) = 0;
+		cursorflash = ticks;
+		command = true;
+		if ( !(*inputPressed(impulses[IN_COMMAND])) )
+		{
+			strcpy(command_str, "");
+		}
+		else
+		{
+			strcpy(command_str, "/");
+		}
+		inputstr = command_str;
+		*inputPressed(impulses[IN_COMMAND]) = 0;
+		SDL_StartTextInput();
+
+		// clear follower menu entities.
+		for ( int i = 0; i < MAXPLAYERS; ++i )
+		{
+			if ( players[i]->isLocalPlayer() && inputs.bPlayerUsingKeyboardControl(i) )
+			{
+				FollowerMenu[i].closeFollowerMenuGUI();
+			}
+		}
+	}
+	if ( command )
+	{
+		int commandPlayer = clientnum;
+		for ( int i = 0; i < MAXPLAYERS; ++i )
+		{
+			if ( inputs.bPlayerUsingKeyboardControl(i) )
+			{
+				commandPlayer = i;
+				break;
+			}
+		}
+
+		if ( !SDL_IsTextInputActive() )
+		{
+			SDL_StartTextInput();
+			inputstr = command_str;
+		}
+		//strncpy(command_str,inputstr,127);
+		inputlen = 127;
+		if ( keystatus[SDL_SCANCODE_ESCAPE] )   // escape
+		{
+			keystatus[SDL_SCANCODE_ESCAPE] = 0;
+			chosen_command = NULL;
+			command = 0;
+		}
+		if ( keystatus[SDL_SCANCODE_RETURN] )   // enter
+		{
+			keystatus[SDL_SCANCODE_RETURN] = 0;
+			command = false;
+
+			strncpy(command_str, messageSanitizePercentSign(command_str, nullptr).c_str(), 127);
+
+			if ( multiplayer != CLIENT )
+			{
+				if ( command_str[0] == '/' )
+				{
+					// backslash invokes command procedure
+					messagePlayer(commandPlayer, command_str);
+					consoleCommand(command_str);
+				}
+				else
+				{
+					if ( strcmp(command_str, "") )
+					{
+						char chatstring[256];
+						strcpy(chatstring, language[739]);
+						strcat(chatstring, command_str);
+						Uint32 color = SDL_MapRGBA(mainsurface->format, 0, 255, 255, 255);
+						messagePlayerColor(commandPlayer, color, chatstring);
+						playSound(238, 64);
+						if ( multiplayer == SERVER )
+						{
+							// send message to all clients
+							for ( int c = 1; c < MAXPLAYERS; c++ )
+							{
+								if ( client_disconnected[c] )
+								{
+									continue;
+								}
+								strcpy((char*)net_packet->data, "MSGS");
+								// strncpy() does not copy N bytes if a terminating null is encountered first
+								// see http://www.cplusplus.com/reference/cstring/strncpy/
+								// see https://en.cppreference.com/w/c/string/byte/strncpy
+								// GCC throws a warning (intended) when the length argument to strncpy() in any
+								// way depends on strlen(src) to discourage this (and related) construct(s).
+
+								strncpy(chatstring, stats[0]->name, 10);
+								chatstring[std::min<size_t>(strlen(stats[0]->name), 10)] = 0; //TODO: Why are size_t and int being compared?
+								strcat(chatstring, ": ");
+								strcat(chatstring, command_str);
+								SDLNet_Write32(color, &net_packet->data[4]);
+								strcpy((char*)(&net_packet->data[8]), chatstring);
+								net_packet->address.host = net_clients[c - 1].host;
+								net_packet->address.port = net_clients[c - 1].port;
+								net_packet->len = 8 + strlen(chatstring) + 1;
+								sendPacketSafe(net_sock, -1, net_packet, c - 1);
+							}
+						}
+					}
+					else
+					{
+						strcpy(command_str, "");
+					}
+				}
+			}
+			else
+			{
+				if ( command_str[0] == '/' )
+				{
+					// backslash invokes command procedure
+					messagePlayer(commandPlayer, command_str);
+					consoleCommand(command_str);
+				}
+				else
+				{
+					if ( strcmp(command_str, "") )
+					{
+						char chatstring[256];
+						strcpy(chatstring, language[739]);
+						strcat(chatstring, command_str);
+						Uint32 color = SDL_MapRGBA(mainsurface->format, 0, 255, 255, 255);
+						messagePlayerColor(commandPlayer, color, chatstring);
+						playSound(238, 64);
+
+						// send message to server
+						strcpy((char*)net_packet->data, "MSGS");
+						net_packet->data[4] = commandPlayer;
+						SDLNet_Write32(color, &net_packet->data[5]);
+						strcpy((char*)(&net_packet->data[9]), command_str);
+						net_packet->address.host = net_server.host;
+						net_packet->address.port = net_server.port;
+						net_packet->len = 9 + strlen(command_str) + 1;
+						sendPacketSafe(net_sock, -1, net_packet, 0);
+					}
+					else
+					{
+						strcpy(command_str, "");
+					}
+				}
+			}
+			//In either case, save this in the command history.
+			if ( strcmp(command_str, "") )
+			{
+				saveCommand(command_str);
+			}
+			chosen_command = NULL;
+		}
+		ttfPrintTextFormatted(ttf16, players[commandPlayer]->messageZone.getMessageZoneStartX(),
+			players[commandPlayer]->messageZone.getMessageZoneStartY(), ">%s", command_str);
+		if ( (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
+		{
+			int x;
+			getSizeOfText(ttf16, command_str, &x, NULL);
+			ttfPrintTextFormatted(ttf16, players[commandPlayer]->messageZone.getMessageZoneStartX() + x + TTF16_WIDTH,
+				players[commandPlayer]->messageZone.getMessageZoneStartY(), "_");
+		}
+	}
+	else
+	{
+		if ( SDL_IsTextInputActive() )
+		{
+			SDL_StopTextInput();
+		}
+	}
+
+	// other status
+	for ( int player = 0; player < MAXPLAYERS; ++player )
+	{
+		if ( !players[player]->isLocalPlayer() )
+		{
+			continue;
+		}
+		if ( players[player]->shootmode == false )
+		{
+			if ( inputs.bPlayerUsingKeyboardControl(player) )
+			{
+				SDL_SetRelativeMouseMode(SDL_FALSE);
+			}
+		}
+		else
+		{
+			//Do these get called every frame? Might be better to move this stuff into an if (went_back_into_shootmode) { ... } thing.
+			//2-3 years later...yes, it is run every frame.
+			GenericGUI[player].closeGUI();
+
+			if ( players[player]->bookGUI.bBookOpen )
+			{
+				players[player]->bookGUI.closeBookGUI();
+			}
+
+			gui_clickdrag[player] = false; //Just a catchall to make sure that any ongoing GUI dragging ends when the GUI is closed.
+
+			if ( capture_mouse )
+			{
+				if ( inputs.bPlayerUsingKeyboardControl(player) )
+				{
+					SDL_SetRelativeMouseMode(SDL_TRUE);
+				}
+			}
+
+		}
+	}
+
+	DebugStats.t7Inputs = std::chrono::high_resolution_clock::now();
+
+	// Draw the static HUD elements
+	if ( !nohud )
+	{
+		//auto tStartMinimapDraw = std::chrono::high_resolution_clock::now();
+		/*auto tEndMinimapDraw = std::chrono::high_resolution_clock::now();
+		double timeTaken = 1000 * std::chrono::duration_cast<std::chrono::duration<double>>(tEndMinimapDraw - tStartMinimapDraw).count();
+		printlog("Minimap draw time: %.5f", timeTaken);*/
+		for ( int player = 0; player < MAXPLAYERS; ++player )
+		{
+			if ( !players[player]->isLocalPlayer() )
+			{
+				continue;
+			}
+			drawMinimap(player); // Draw the Minimap
+			drawStatus(player); // Draw the Status Bar (Hotbar, Hungry/Minotaur Icons, Tooltips, etc.)
+		}
+	}
+
+	DebugStats.t8Status = std::chrono::high_resolution_clock::now();
+
+	for ( int player = 0; player < MAXPLAYERS; ++player )
+	{
+		if ( !players[player]->isLocalPlayer() )
+		{
+			continue;
+		}
+
+		drawSustainedSpells(player);
+		updateAppraisalItemBox(player);
+
+		// inventory and stats
+		if ( players[player]->shootmode == false )
+		{
+			if ( players[player]->gui_mode == GUI_MODE_INVENTORY )
+			{
+				updateCharacterSheet(player);
+				updatePlayerInventory(player);
+				updateChestInventory(player);
+				GenericGUI[player].updateGUI();
+				players[player]->bookGUI.updateBookGUI();
+				//updateRightSidebar(); -- 06/12/20 we don't use this but it still somehow displays stuff :D
+
+			}
+			else if ( players[player]->gui_mode == GUI_MODE_MAGIC )
+			{
+				updateCharacterSheet(player);
+				//updateMagicGUI();
+			}
+			else if ( players[player]->gui_mode == GUI_MODE_SHOP )
+			{
+				updateCharacterSheet(player);
+				updatePlayerInventory(player);
+				updateShopWindow(player);
+			}
+			
+			if ( players[player]->gui_mode == GUI_MODE_FOLLOWERMENU )
+			{
+				drawPartySheet(player);
+			}
+			else
+			{
+				if ( players[player]->characterSheet.proficienciesPage == 1 )
+				{
+					drawPartySheet(player);
+				}
+				else
+				{
+					drawSkillsSheet(player);
+				}
+			}
+		}
+		else
+		{
+			if ( players[player]->characterSheet.lock_right_sidebar )
+			{
+				if ( players[player]->characterSheet.proficienciesPage == 1 )
+				{
+					drawPartySheet(player);
+				}
+				else
+				{
+					drawSkillsSheet(player);
+				}
+			}
+		}
+
+
+		bool debugMouse = false;
+		if ( debugMouse )
+		{
+			int x = players[player]->camera_x1() + 12;
+			int y = players[player]->camera_y1() + 12;
+			printTextFormatted(font8x8_bmp, x, y, "mx:  %4d | my:  %4d", mousex, mousey);
+			printTextFormatted(font8x8_bmp, x, y + 12, "mox: %4d | moy: %4d", omousex, omousey);
+			printTextFormatted(font8x8_bmp, x, y + 28, "vx:  %4d |  vy: %4d",
+				inputs.getVirtualMouse(player)->x, inputs.getVirtualMouse(player)->y);
+			printTextFormatted(font8x8_bmp, x, y + 40, "vox: %4d | voy: %4d",
+				inputs.getVirtualMouse(player)->ox, inputs.getVirtualMouse(player)->oy);
+
+			if ( inputs.hasController(player) )
+			{
+				printTextFormatted(font8x8_bmp, x, y + 60, "rawx: %4d | rawy: %4d",
+					inputs.getController(player)->oldAxisRightX, inputs.getController(player)->oldAxisRightY);
+				printTextFormatted(font8x8_bmp, x, y + 72, "flx: %4f | fly: %4f",
+					inputs.getController(player)->oldFloatRightX, inputs.getController(player)->oldFloatRightY);
+				printTextFormatted(font8x8_bmp, x, y + 84, "deadzonex: %3.1f%% | deadzoney: %3.1f%%",
+					inputs.getController(player)->leftStickDeadzone * 100 / 32767.0,
+					inputs.getController(player)->rightStickDeadzone * 100 / 32767.0);
+			}
+			if ( players[player]->entity )
+			{
+				printTextFormatted(font8x8_bmp, x, y + 100, "velx:  %4f | vely:  %4f",
+					players[player]->entity->vel_x, players[player]->entity->vel_y);
+			}
+			if ( inputs.hasController(player) )
+			{
+				printTextFormatted(font8x8_bmp, x, y + 112, "leftx: %4f | lefty: %4f",
+					inputs.getController(player)->getLeftXPercent(),
+					inputs.getController(player)->getLeftYPercent());
+			}
+		}
+
+		if ( (players[player]->shootmode == false && players[player]->gui_mode == GUI_MODE_INVENTORY) || show_game_timer_always )
+		{
+			Uint32 sec = (completionTime / TICKS_PER_SECOND) % 60;
+			Uint32 min = ((completionTime / TICKS_PER_SECOND) / 60) % 60;
+			Uint32 hour = ((completionTime / TICKS_PER_SECOND) / 60) / 60;
+			printTextFormatted(font12x12_bmp, xres - 12 * 9, 12, "%02d:%02d:%02d", hour, min, sec);
+		}
+	}
+
+	DebugStats.t9GUI = std::chrono::high_resolution_clock::now();
+
+	UIToastNotificationManager.drawNotifications(movie, true); // draw this before the cursors
+
+															   // pointer in inventory screen
+	for ( int player = 0; player < MAXPLAYERS; ++player )
+	{
+		if ( !players[player]->isLocalPlayer() )
+		{
+			continue;
+		}
+
+		SDL_Rect pos;
+
+		FollowerRadialMenu& followerMenu = FollowerMenu[player];
+
+		if ( players[player]->shootmode == false )
+		{
+			// dragging items, player not needed to be alive
+			if ( inputs.getUIInteraction(player)->selectedItem )
+			{
+				Item*& selectedItem = inputs.getUIInteraction(player)->selectedItem;
+				pos.x = inputs.getMouse(player, Inputs::X) - 15;
+				pos.y = inputs.getMouse(player, Inputs::Y) - 15;
+				pos.w = 32 * uiscale_inventory;
+				pos.h = 32 * uiscale_inventory;
+				drawImageScaled(itemSprite(selectedItem), NULL, &pos);
+				if ( selectedItem->count > 1 )
+				{
+					ttfPrintTextFormatted(ttf8, pos.x + 24 * uiscale_inventory, pos.y + 24 * uiscale_inventory, "%d", selectedItem->count);
+				}
+				if ( itemCategory(selectedItem) != SPELL_CAT )
+				{
+					if ( itemIsEquipped(selectedItem, player) )
+					{
+						pos.y += 16;
+						drawImage(equipped_bmp, NULL, &pos);
+					}
+					else if ( selectedItem->status == BROKEN )
+					{
+						pos.y += 16;
+						drawImage(itembroken_bmp, NULL, &pos);
+					}
+				}
+				else
+				{
+					spell_t* spell = getSpellFromItem(player, selectedItem);
+					if ( players[player]->magic.selectedSpell() == spell &&
+						(players[player]->magic.selected_spell_last_appearance == selectedItem->appearance
+							|| players[player]->magic.selected_spell_last_appearance == -1) )
+					{
+						pos.y += 16;
+						drawImage(equipped_bmp, NULL, &pos);
+					}
+				}
+			}
+			else if ( players[player]->isLocalPlayer() && followerMenu.selectMoveTo &&
+				(followerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT
+					|| followerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT) )
+			{
+				pos.x = inputs.getMouse(player, Inputs::X) - cursor_bmp->w / 2;
+				pos.y = inputs.getMouse(player, Inputs::Y) - cursor_bmp->h / 2;
+				drawImageAlpha(cursor_bmp, NULL, &pos, 192);
+				if ( followerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT )
+				{
+					if ( followerMenu.followerToCommand
+						&& (followerMenu.followerToCommand->getMonsterTypeFromSprite() == SENTRYBOT
+							|| followerMenu.followerToCommand->getMonsterTypeFromSprite() == SPELLBOT)
+						)
+					{
+						ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[3650]);
+					}
+					else
+					{
+						ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[3039]);
+					}
+				}
+				else
+				{
+					if ( !strcmp(followerMenu.interactText, "") )
+					{
+						if ( followerMenu.followerToCommand )
+						{
+							int type = followerMenu.followerToCommand->getMonsterTypeFromSprite();
+							if ( followerMenu.allowedInteractItems(type)
+								|| followerMenu.allowedInteractFood(type)
+								|| followerMenu.allowedInteractWorld(type)
+								)
+							{
+								ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[4041]); // "Interact with..."
+							}
+							else
+							{
+								ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[4042]); // "Attack..."
+							}
+						}
+						else
+						{
+							ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[4041]); // "Interact with..."
+						}
+					}
+					else
+					{
+						ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, "%s", followerMenu.interactText);
+					}
+				}
+			}
+			else if ( inputs.getVirtualMouse(player)->draw_cursor )
+			{
+				pos.x = inputs.getMouse(player, Inputs::X) - cursor_bmp->w / 2;
+				pos.y = inputs.getMouse(player, Inputs::Y) - cursor_bmp->h / 2;
+				pos.w = 0;
+				pos.h = 0;
+				drawImageAlpha(cursor_bmp, NULL, &pos, 192);
+			}
+		}
+		else if ( !nohud )
+		{
+			pos.x = players[player]->camera_midx();
+			pos.y = players[player]->camera_midy();
+			pos.w = 0;
+			pos.h = 0;
+			if ( followerMenu.selectMoveTo && (followerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT
+				|| followerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT) )
+			{
+				bool forceBlankInteractText = false;
+				if ( !players[player]->worldUI.isEnabled() )
+				{
+					pos.x -= cursor_bmp->w / 2;
+					pos.y -= cursor_bmp->h / 2;
+					drawImageAlpha(cursor_bmp, NULL, &pos, 192);
+					pos.x += 24;
+					pos.y += 24;
+				}
+				else
+				{
+					if ( followerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT )
+					{
+						pos.x -= cursor_bmp->w / 2;
+						pos.y -= cursor_bmp->h / 2;
+						drawImageAlpha(cursor_bmp, NULL, &pos, 192);
+
+						pos.x = players[player]->camera_midx();
+						pos.y = players[player]->camera_midy();
+						pos.x -= selected_cursor_bmp->w / 2;
+						pos.y -= selected_cursor_bmp->h / 2;
+					}
+					else
+					{
+						if ( (players[player]->worldUI.isEnabled() && !players[player]->worldUI.bTooltipInView) )
+						{
+							forceBlankInteractText = true;
+
+							pos.x -= cross_bmp->w / 2;
+							pos.y -= cross_bmp->h / 2;
+							drawImageAlpha(cross_bmp, NULL, &pos, 128);
+							pos.x = players[player]->camera_midx();
+							pos.y = players[player]->camera_midy();
+							pos.x -= selected_cursor_bmp->w / 2;
+							pos.y -= selected_cursor_bmp->h / 2;
+							//drawImageAlpha(selected_cursor_bmp, NULL, &pos, 128);
+						}
+						else
+						{
+							pos.x -= selected_cursor_bmp->w / 2;
+							pos.y -= selected_cursor_bmp->h / 2;
+							drawImageAlpha(selected_cursor_bmp, NULL, &pos, 128);
+						}
+					}
+					pos.x += 40;
+					pos.y += 20;
+					pos.h = selected_cursor_bmp->h;
+					pos.w = pos.h;
+
+					SDL_Rect glyphsrc{ 0, 0, 0, 0 };
+
+					if ( ticks % 50 < 25 )
+					{
+						int button = joyimpulses[INJOY_GAME_USE] - 301;
+						glyphsrc = inputs.getGlyphRectForInput(player, true, 0, button);
+						pos.w = glyphsrc.w * 3;
+						pos.h = glyphsrc.h * 3;
+						pos.y -= 4;
+						drawImageScaled(controllerglyphs1_bmp, &glyphsrc, &pos);
+						pos.y += 4;
+					}
+					else
+					{
+						int button = joyimpulses[INJOY_GAME_USE] - 301;
+						glyphsrc = inputs.getGlyphRectForInput(player, true, 0, button);
+						pos.w = glyphsrc.w * 3;
+						pos.h = glyphsrc.h * 3;
+						drawImageScaled(controllerglyphs1_bmp, &glyphsrc, &pos);
+					}
+					pos.x += pos.w + 4;
+
+					SDL_Rect skillsrc = getRectForSkillIcon(PRO_LEADERSHIP);
+					SDL_Rect skillpos = pos;
+					skillpos.x += 4;
+					skillpos.w = 32;
+					skillpos.h = 32;
+					skillpos.y -= (skillpos.h - pos.h) / 2; // to adjust for different glyph heights
+					drawImageScaled(skillIcons_bmp, &skillsrc, &skillpos);
+					pos.x += skillpos.w + 8; // move text past the skill box
+					pos.y += pos.h / 2 - getHeightOfFont(ttf12) / 2 + 3;
+				}
+
+				if ( followerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT )
+				{
+					if ( followerMenu.followerToCommand
+						&& (followerMenu.followerToCommand->getMonsterTypeFromSprite() == SENTRYBOT
+							|| followerMenu.followerToCommand->getMonsterTypeFromSprite() == SPELLBOT)
+						)
+					{
+						ttfPrintTextFormatted(ttf12, pos.x, pos.y, language[3650]);
+					}
+					else
+					{
+						ttfPrintTextFormatted(ttf12, pos.x, pos.y, language[3039]);
+					}
+				}
+				else
+				{
+					if ( !strcmp(followerMenu.interactText, "") || forceBlankInteractText )
+					{
+						if ( followerMenu.followerToCommand )
+						{
+							int type = followerMenu.followerToCommand->getMonsterTypeFromSprite();
+							if ( followerMenu.allowedInteractItems(type)
+								|| followerMenu.allowedInteractFood(type)
+								|| followerMenu.allowedInteractWorld(type)
+								)
+							{
+								ttfPrintTextFormatted(ttf12, pos.x, pos.y, language[4041]); // "Interact with..."
+							}
+							else
+							{
+								ttfPrintTextFormatted(ttf12, pos.x, pos.y, language[4042]); // "Attack..."
+							}
+						}
+						else
+						{
+							ttfPrintTextFormatted(ttf12, pos.x, pos.y, language[4041]); // "Interact with..."
+						}
+					}
+					else
+					{
+						ttfPrintTextFormatted(ttf12, pos.x, pos.y, "%s", followerMenu.interactText);
+					}
+				}
+			}
+			else
+			{
+				bool foundTinkeringKit = false;
+				if ( players[player] && players[player]->entity && stats[player]
+					&& stats[player]->defending )
+				{
+					if ( stats[player]->shield && stats[player]->shield->type == TOOL_TINKERING_KIT )
+					{
+						foundTinkeringKit = true;
+					}
+				}
+				if ( players[player]->worldUI.bTooltipInView )
+				{
+					pos.x -= selected_cursor_bmp->w / 2;
+					pos.y -= selected_cursor_bmp->h / 2;
+					drawImageAlpha(selected_cursor_bmp, NULL, &pos, 128);
+					pos.x += 40;
+					pos.y += 20;
+					pos.h = selected_cursor_bmp->h;
+					pos.w = pos.h;
+
+					SDL_Rect glyphsrc{ 0, 0, 0, 0 };
+
+					if ( ticks % 50 < 25 )
+					{
+						int button = joyimpulses[INJOY_GAME_USE] - 301;
+						glyphsrc = inputs.getGlyphRectForInput(player, true, 0, button);
+						pos.w = glyphsrc.w * 3;
+						pos.h = glyphsrc.h * 3;
+						pos.y -= 4;
+						drawImageScaled(controllerglyphs1_bmp, &glyphsrc, &pos);
+						pos.y += 4;
+					}
+					else
+					{
+						int button = joyimpulses[INJOY_GAME_USE] - 301;
+						glyphsrc = inputs.getGlyphRectForInput(player, true, 0, button);
+						pos.w = glyphsrc.w * 3;
+						pos.h = glyphsrc.h * 3;
+						drawImageScaled(controllerglyphs1_bmp, &glyphsrc, &pos);
+					}
+					pos.x += pos.w + 4;
+					if ( foundTinkeringKit )
+					{
+						SDL_Rect skillsrc = getRectForSkillIcon(PRO_LOCKPICKING);
+						SDL_Rect skillpos = pos;
+						skillpos.x += 4;
+						skillpos.w = 32;
+						skillpos.h = 32;
+						skillpos.y -= (skillpos.h - pos.h) / 2; // to adjust for different glyph heights
+						drawImageScaled(skillIcons_bmp, &skillsrc, &skillpos);
+						pos.x += skillpos.w + 8; // move text past the skill box
+					}
+					pos.y += pos.h / 2 - getHeightOfFont(ttf12) / 2 + 3;
+
+					if ( foundTinkeringKit )
+					{
+						ttfPrintText(ttf12, pos.x, pos.y, players[player]->worldUI.interactText.c_str());
+					}
+					else
+					{
+						ttfPrintText(ttf12, pos.x, pos.y, players[player]->worldUI.interactText.c_str());
+					}
+				}
+				else
+				{
+					pos.x -= cross_bmp->w / 2;
+					pos.y -= cross_bmp->h / 2;
+					drawImageAlpha(cross_bmp, NULL, &pos, 128);
+
+					if ( foundTinkeringKit )
+					{
+						if ( players[player]->worldUI.isEnabled() )
+						{
+							pos.x = players[player]->camera_midx();
+							pos.y = players[player]->camera_midy();
+							pos.x -= selected_cursor_bmp->w / 2;
+							pos.y -= selected_cursor_bmp->h / 2;
+							// skip cursor here, no tooltip in view
+							//drawImageAlpha(selected_cursor_bmp, NULL, &pos, 128);
+							pos.x += 40;
+							pos.y += 20;
+							pos.h = selected_cursor_bmp->h;
+							pos.w = pos.h;
+
+							SDL_Rect glyphsrc{ 0, 0, 0, 0 };
+
+							if ( ticks % 50 < 25 )
+							{
+								int button = joyimpulses[INJOY_GAME_USE] - 301;
+								glyphsrc = inputs.getGlyphRectForInput(player, true, 0, button);
+								pos.w = glyphsrc.w * 3;
+								pos.h = glyphsrc.h * 3;
+								pos.y -= 4;
+								drawImageScaled(controllerglyphs1_bmp, &glyphsrc, &pos);
+								pos.y += 4;
+							}
+							else
+							{
+								int button = joyimpulses[INJOY_GAME_USE] - 301;
+								glyphsrc = inputs.getGlyphRectForInput(player, true, 0, button);
+								pos.w = glyphsrc.w * 3;
+								pos.h = glyphsrc.h * 3;
+								drawImageScaled(controllerglyphs1_bmp, &glyphsrc, &pos);
+							}
+							pos.x += pos.w + 4;
+
+							SDL_Rect skillsrc = getRectForSkillIcon(PRO_LOCKPICKING);
+							SDL_Rect skillpos = pos;
+							skillpos.x += 4;
+							skillpos.w = 32;
+							skillpos.h = 32;
+							skillpos.y -= (skillpos.h - pos.h) / 2; // to adjust for different glyph heights
+							drawImageScaled(skillIcons_bmp, &skillsrc, &skillpos);
+							pos.x += skillpos.w + 8; // move text past the skill box
+
+							pos.y += pos.h / 2 - getHeightOfFont(ttf12) / 2 + 3;
+							ttfPrintTextFormatted(ttf12, pos.x, pos.y, language[3663]);
+						}
+						else
+						{
+							ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[3663]);
+						}
+					}
+				}
+
+				// prints out current pressed glyph
+				/*pos.x += 80;
+				for ( int i = 0; i < SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_MAX; ++i )
+				{
+				auto button = static_cast<SDL_GameControllerButton>(i);
+				if ( inputs.getController(player) && inputs.getController(player)->binary(button) )
+				{
+				SDL_Rect glyphsrc = inputs.getGlyphRectForInput(player, false, 0, i);
+				pos.y += 40;
+				pos.w = glyphsrc.w * 3;
+				pos.h = glyphsrc.h * 3;
+				drawImageScaled(controllerglyphs1_bmp, &glyphsrc, &pos);
+				}
+				}*/
+			}
+		}
+	}
+}
+
 /*-------------------------------------------------------------------------------
 
 	main
@@ -3241,6 +4496,10 @@ int main(int argc, char** argv)
 #ifdef WINDOWS
 	SetUnhandledExceptionFilter(unhandled_handler);
 #endif // WINDOWS
+#ifdef NINTENDO
+	nxInit();
+	PHYSFS_init(nullptr);
+#endif // NINTENDO
 
 #ifdef LINUX
 	//Catch segfault stuff.
@@ -3254,18 +4513,26 @@ int main(int argc, char** argv)
 	sigaction(SIGSEGV, &sa, NULL);
 #endif
 
+#ifndef NINTENDO
 	try
+#endif
 	{
-#if defined(APPLE) || defined(BSD)
+#if defined(APPLE) || defined(BSD) || defined(HAIKU)
 #ifdef APPLE
 		uint32_t buffsize = 4096;
 		char binarypath[buffsize];
 		int result = _NSGetExecutablePath(binarypath, &buffsize);
 #elif defined(BSD)
+#if defined(__FreeBSD__)
 		int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
 		size_t buffsize = PATH_MAX;
 		char binarypath[buffsize];
 		int result = sysctl(mib, 4, binarypath, &buffsize, NULL, 0);
+#elif defined(__NetBSD__)
+		constexpr size_t buffsize = PATH_MAX;
+		char binarypath[buffsize];
+		int result = (readlink("/proc/curproc/exe", binarypath, buffsize) > 0 ? 0 : -1);
+#endif
 #elif defined(HAIKU)
 		size_t buffsize = PATH_MAX;
 		char binarypath[buffsize];
@@ -3276,6 +4543,7 @@ int main(int argc, char** argv)
 			printlog("Binary path: %s\n", binarypath);
 			char* last = strrchr(binarypath, '/');
 			*last = '\0';
+#ifdef APPLE
 			char execpath[buffsize];
 			strcpy(execpath, binarypath);
 			//char* last = strrchr(execpath, '/');
@@ -3289,6 +4557,7 @@ int main(int argc, char** argv)
 			chdir("Resources");
 			//chdir("..");
 			//chdir("..");
+#endif
 		}
 		else
 		{
@@ -3301,7 +4570,6 @@ int main(int argc, char** argv)
 		//Mix_Music **music, *intromusic, *splashmusic, *creditsmusic;
 		node_t* node;
 		Entity* entity;
-		FILE* fp;
 		//SDL_Surface *sky_bmp;
 		light_t* light;
 
@@ -3311,12 +4579,13 @@ int main(int argc, char** argv)
 #ifdef WINDOWS
 		strcpy(outputdir, "./");
 #else
+ #ifndef NINTENDO
 		char *basepath = getenv("HOME");
- #ifdef USE_EOS
-  #ifdef STEAMWORKS
+  #ifdef USE_EOS
+   #ifdef STEAMWORKS
 		//Steam + EOS
 		snprintf(outputdir, sizeof(outputdir), "%s/.barony", basepath);
-  #else
+   #else
 		//Just EOS.
 		std::string firstDotdir(basepath);
 		firstDotdir += "/.barony/";
@@ -3325,15 +4594,18 @@ int main(int argc, char** argv)
 			mkdir(firstDotdir.c_str(), 0777); //Since this mkdir is not equivalent to mkdir -p, have to create each part of the path manually.
 		}
 		snprintf(outputdir, sizeof(outputdir), "%s/epicgames", firstDotdir.c_str());
-  #endif
- #else //USE_EOS
+   #endif
+  #else //USE_EOS
 		//No EOS. Could be Steam though. Or could also not.
 		snprintf(outputdir, sizeof(outputdir), "%s/.barony", basepath);
- #endif
+  #endif
 		if (access(outputdir, F_OK) == -1)
 		{
 			mkdir(outputdir, 0777);
 		}
+ #else // !NINTENDO
+		strcpy(outputdir, "save:");
+ #endif // NINTENDO
 #endif
 		// read command line arguments
 		if ( argc > 1 )
@@ -3394,12 +4666,18 @@ int main(int argc, char** argv)
 		printlog("Data path is %s", datadir);
 		printlog("Output path is %s", outputdir);
 
+#ifdef NINTENDO
+//		strcpy(classtoquickstart, "warrior");
+#endif
 
 		// load default language file (english)
 		if ( loadLanguage("en") )
 		{
 			printlog("Fatal error: failed to load default language file!\n");
-			fclose(logfile);
+			if (logfile)
+			{
+				fclose(logfile);
+			}
 			exit(1);
 		}
 
@@ -3481,12 +4759,19 @@ int main(int argc, char** argv)
 		map.creatures = new list_t;
 		map.creatures->first = nullptr;
 		map.creatures->last = nullptr;
+		map.worldUI = new list_t;
+		map.worldUI->first = nullptr;
+		map.worldUI->last = nullptr;
 
 		// initialize player conducts
 		setDefaultPlayerConducts();
 
 		// instantiate a timer
+#ifdef NINTENDO
+		lastTick = std::chrono::steady_clock::now();
+#else
 		timer = SDL_AddTimer(1000 / TICKS_PER_SECOND, timerCallback, NULL);
+#endif // NINTENDO
 		srand(time(NULL));
 		fountainSeed.seed(rand());
 
@@ -3547,29 +4832,40 @@ int main(int argc, char** argv)
 			if ( intro )
 			{
 				globalLightModifierActive = GLOBAL_LIGHT_MODIFIER_STOPPED;
-				shootmode = false; //Hack because somebody put a shootmode = true where it don't belong, which might and does break stuff.
+				for ( int i = 0; i < MAXPLAYERS; ++i )
+				{
+					players[i]->shootmode = false; //Hack because somebody put a shootmode = true where it don't belong, which might and does break stuff.
+				}
 				if ( introstage == -1 )
 				{
 					// hack to fix these things from breaking everything...
-					hudarm = NULL;
-					hudweapon = NULL;
-					magicLeftHand = NULL;
-					magicRightHand = NULL;
+					for ( int i = 0; i < MAXPLAYERS; ++i )
+					{
+						players[i]->hud.arm = nullptr;
+						players[i]->hud.weapon = nullptr;
+						players[i]->hud.magicLeftHand = nullptr;
+						players[i]->hud.magicRightHand = nullptr;
+					}
 
 					// team splash
 					drawRect(NULL, 0, 255);
 					drawGear(xres / 2, yres / 2, gearsize, gearrot);
 					drawLine(xres / 2 - 160, yres / 2 + 112, xres / 2 + 160, yres / 2 + 112, SDL_MapRGB(mainsurface->format, 127, 0, 0), std::min<Uint16>(logoalpha, 255));
 					printTextFormattedAlpha(font16x16_bmp, (xres / 2) - strlen("Turning Wheel") * 9, yres / 2 + 128, std::min<Uint16>(std::max<Uint16>(0, logoalpha), 255), "Turning Wheel");
-					if ( (logoalpha >= 255 || keystatus[SDL_SCANCODE_ESCAPE] || *inputPressed(joyimpulses[INJOY_MENU_NEXT]) || *inputPressed(joyimpulses[INJOY_MENU_CANCEL])) && !fadeout )
+					if ( (logoalpha >= 255 
+						|| keystatus[SDL_SCANCODE_ESCAPE] 
+						|| inputs.bControllerInputPressed(clientnum, INJOY_MENU_NEXT) 
+						|| inputs.bControllerInputPressed(clientnum, INJOY_MENU_CANCEL)) && !fadeout )
 					{
 						fadeout = true;
 					}
-					if ( fadefinished || keystatus[SDL_SCANCODE_ESCAPE] || *inputPressed(joyimpulses[INJOY_MENU_NEXT]) || *inputPressed(joyimpulses[INJOY_MENU_CANCEL]))
+					if ( fadefinished || keystatus[SDL_SCANCODE_ESCAPE] 
+						|| inputs.bControllerInputPressed(clientnum, INJOY_MENU_NEXT)
+						|| inputs.bControllerInputPressed(clientnum, INJOY_MENU_CANCEL))
 					{
 						keystatus[SDL_SCANCODE_ESCAPE] = 0;
-						*inputPressed(joyimpulses[INJOY_MENU_NEXT]) = 0;
-						*inputPressed(joyimpulses[INJOY_MENU_CANCEL]) = 0;
+						inputs.controllerClearInput(clientnum, INJOY_MENU_NEXT);
+						inputs.controllerClearInput(clientnum, INJOY_MENU_CANCEL);
 						fadealpha = 255;
 #if (!defined STEAMWORKS && !defined USE_EOS)
 						introstage = 0;
@@ -3625,10 +4921,13 @@ int main(int argc, char** argv)
 				else if ( introstage == 0 )
 				{
 					// hack to fix these things from breaking everything...
-					hudarm = NULL;
-					hudweapon = NULL;
-					magicLeftHand = NULL;
-					magicRightHand = NULL;
+					for ( int i = 0; i < MAXPLAYERS; ++i )
+					{
+						players[i]->hud.arm = nullptr;
+						players[i]->hud.weapon = nullptr;
+						players[i]->hud.magicLeftHand = nullptr;
+						players[i]->hud.magicRightHand = nullptr;
+					}
 
 					drawRect(NULL, 0, 255);
 					char* banner_text1 = language[738];
@@ -3648,7 +4947,11 @@ int main(int argc, char** argv)
 
 					int menuMapType = 0;
 					//if( (*inputPressed(joyimpulses[INJOY_MENU_NEXT]) || *inputPressed(joyimpulses[INJOY_MENU_CANCEL]) || *inputPressed(joyimpulses[INJOY_BACK]) || keystatus[SDL_SCANCODE_ESCAPE] || keystatus[SDL_SCANCODE_SPACE] || keystatus[SDL_SCANCODE_RETURN] || mousestatus[SDL_BUTTON_LEFT] || indev_timer >= indev_displaytime) && !fadeout) {
-					if ( (*inputPressed(joyimpulses[INJOY_MENU_NEXT]) || *inputPressed(joyimpulses[INJOY_MENU_CANCEL]) || keystatus[SDL_SCANCODE_ESCAPE] || keystatus[SDL_SCANCODE_SPACE] || keystatus[SDL_SCANCODE_RETURN] || mousestatus[SDL_BUTTON_LEFT] || indev_timer >= indev_displaytime) && !fadeout)
+					if ( (inputs.bControllerInputPressed(clientnum, INJOY_MENU_NEXT) 
+						|| inputs.bControllerInputPressed(clientnum, INJOY_MENU_CANCEL)
+						|| keystatus[SDL_SCANCODE_ESCAPE] || keystatus[SDL_SCANCODE_SPACE]
+						|| keystatus[SDL_SCANCODE_RETURN] || mousestatus[SDL_BUTTON_LEFT] 
+						|| indev_timer >= indev_displaytime) && !fadeout)
 					{
 						switch ( rand() % 4 ) // DRM FREE VERSION INTRO
 						{
@@ -3720,10 +5023,13 @@ int main(int argc, char** argv)
 						loading = true;
 
 						// hack to fix these things from breaking everything...
-						hudarm = NULL;
-						hudweapon = NULL;
-						magicLeftHand = NULL;
-						magicRightHand = NULL;
+						for ( int i = 0; i < MAXPLAYERS; ++i )
+						{
+							players[i]->hud.arm = nullptr;
+							players[i]->hud.weapon = nullptr;
+							players[i]->hud.magicLeftHand = nullptr;
+							players[i]->hud.magicRightHand = nullptr;
+						}
 
 						// reset class loadout
 						stats[0]->sex = static_cast<sex_t>(rand() % 2);
@@ -3743,7 +5049,10 @@ int main(int argc, char** argv)
 
 						//TODO: Replace all of this with centralized startGameRoutine().
 						// setup game
-						shootmode = true;
+						for ( int i = 0; i < MAXPLAYERS; ++i )
+						{
+							players[i]->shootmode = true;
+						}
 						// make some messages
 						startMessages();
 
@@ -3838,13 +5147,19 @@ int main(int argc, char** argv)
 						UIToastNotificationManager.drawNotifications(movie, true); // draw this before the cursor
 
 						// draw mouse
-						if (!movie && draw_cursor)
+						if ( !movie )
 						{
-							pos.x = mousex - cursor_bmp->w / 2;
-							pos.y = mousey - cursor_bmp->h / 2;
-							pos.w = 0;
-							pos.h = 0;
-							drawImageAlpha(cursor_bmp, NULL, &pos, 192);
+							for ( int i = 0; i < MAXPLAYERS; ++i )
+							{
+								if ( inputs.getVirtualMouse(i)->draw_cursor )
+								{
+									pos.x = inputs.getMouse(i, Inputs::X) - cursor_bmp->w / 2;
+									pos.y = inputs.getMouse(i, Inputs::Y) - cursor_bmp->h / 2;
+									pos.w = 0;
+									pos.h = 0;
+									drawImageAlpha(cursor_bmp, NULL, &pos, 192);
+								}
+							}
 						}
 					}
 				}
@@ -3854,11 +5169,14 @@ int main(int argc, char** argv)
 				if ( multiplayer == CLIENT )
 				{
 					// make sure shop inventory is alloc'd
-					if ( !shopInv )
+					for ( int i = 0; i < MAXPLAYERS; ++i )
 					{
-						shopInv = (list_t*) malloc(sizeof(list_t));
-						shopInv->first = NULL;
-						shopInv->last = NULL;
+						if ( !shopInv[i] )
+						{
+							shopInv[i] = (list_t*) malloc(sizeof(list_t));
+							shopInv[i]->first = NULL;
+							shopInv[i]->last = NULL;
+						}
 					}
 				}
 #ifdef MUSIC
@@ -3866,22 +5184,75 @@ int main(int argc, char** argv)
 #endif
 				DebugStats.t4Music = std::chrono::high_resolution_clock::now();
 
-				// toggling the game menu
-				if ( (keystatus[SDL_SCANCODE_ESCAPE] || (*inputPressed(joyimpulses[INJOY_PAUSE_MENU]) && rebindaction == -1)) && !command )
+#ifdef NINTENDO
+				// activate console
+				if ((inputs.bControllerInputPressed(clientnum, INJOY_PAUSE_MENU)) &&
+					(inputs.bControllerInputPressed(clientnum, INJOY_GAME_DEFEND)) &&
+					(inputs.bControllerInputPressed(clientnum, INJOY_GAME_ATTACK)))
 				{
-					keystatus[SDL_SCANCODE_ESCAPE] = 0;
-					*inputPressed(joyimpulses[INJOY_PAUSE_MENU]) = 0;
-					if ( !shootmode )
+					inputs.bControllerInputPressed(clientnum, INJOY_PAUSE_MENU);
+					inputs.bControllerInputPressed(clientnum, INJOY_GAME_DEFEND);
+					inputs.bControllerInputPressed(clientnum, INJOY_GAME_ATTACK);
+
+					auto result = nxKeyboard("Enter console command");
+					if (result.success)
 					{
-						closeAllGUIs(CLOSEGUI_ENABLE_SHOOTMODE, CLOSEGUI_CLOSE_ALL);
-						gui_mode = GUI_MODE_INVENTORY;
-						attributespage = 0;
-						//proficienciesPage = 0;
+						char temp[128];
+						strncpy(temp, result.str.c_str(), 128);
+						temp[127] = '\0';
+						messagePlayer(clientnum, temp);
+						consoleCommand(temp);
 					}
-					else
+				}
+#endif
+
+				// toggling the game menu
+				bool doPause = false;
+				for ( int i = 0; i < MAXPLAYERS; ++i )
+				{
+					if ( !players[i]->isLocalPlayer() )
 					{
-						pauseGame(0, MAXPLAYERS);
+						continue;
 					}
+					if ( inputs.bPlayerUsingKeyboardControl(i) )
+					{
+						if ( (keystatus[SDL_SCANCODE_ESCAPE] && rebindaction == -1) && !command )
+						{
+							keystatus[SDL_SCANCODE_ESCAPE] = 0;
+							if ( !players[i]->shootmode )
+							{
+								players[i]->closeAllGUIs(CLOSEGUI_ENABLE_SHOOTMODE, CLOSEGUI_CLOSE_ALL);
+								players[i]->gui_mode = GUI_MODE_INVENTORY;
+								players[i]->characterSheet.attributespage = 0;
+								//proficienciesPage = 0;
+							}
+							else
+							{
+								doPause = true;
+							}
+							break;
+						}
+					}
+					if ( (inputs.bControllerInputPressed(i, INJOY_PAUSE_MENU) && rebindaction == -1) && !command )
+					{
+						inputs.controllerClearInput(i, INJOY_PAUSE_MENU);
+						if ( !players[i]->shootmode )
+						{
+							players[i]->closeAllGUIs(CLOSEGUI_ENABLE_SHOOTMODE, CLOSEGUI_CLOSE_ALL);
+							players[i]->gui_mode = GUI_MODE_INVENTORY;
+							players[i]->characterSheet.attributespage = 0;
+							//proficienciesPage = 0;
+						}
+						else
+						{
+							doPause = true;
+						}
+						break;
+					}
+				}
+				if ( doPause )
+				{
+					pauseGame(0, MAXPLAYERS);
 				}
 
 				// main drawing
@@ -3893,6 +5264,7 @@ int main(int argc, char** argv)
 					camera.ang += cvars.shakex2;
 					camera.vang += cvars.shakey2 / 200.0;
 				}
+
 				if ( true )
 				{
 					// drunkenness spinning
@@ -3940,11 +5312,22 @@ int main(int argc, char** argv)
 								} 
 								else if (playercount == 2)
 								{
-									// divide screen horizontally
-									camera.winx = 0;
-									camera.winy = c * yres / 2;
-									camera.winw = xres;
-									camera.winh = yres / 2;
+									if ( players[c]->splitScreenType == Player::SPLITSCREEN_VERTICAL )
+									{
+										// divide screen vertically
+										camera.winx = c * xres / 2;
+										camera.winy = 0;
+										camera.winw = xres / 2;
+										camera.winh = yres;
+									}
+									else
+									{
+										// divide screen horizontally
+										camera.winx = 0;
+										camera.winy = c * yres / 2;
+										camera.winw = xres;
+										camera.winh = yres / 2;
+									}
 								} 
 								else if (playercount >= 3) 
 								{
@@ -3967,17 +5350,17 @@ int main(int argc, char** argv)
 								{
 									real_t oldYaw = players[c]->entity->yaw;
 									//printText(font8x8_bmp, 20, 20, "using smooth camera");
-									handlePlayerCameraBobbing(players[c]->entity, c, true);
-									handlePlayerMovement(players[c]->entity, c, true);
-									handlePlayerCameraUpdate(players[c]->entity, c, true);
-									handlePlayerCameraPosition(players[c]->entity, c, true);
+									players[c]->movement.handlePlayerCameraBobbing(true);
+									players[c]->movement.handlePlayerMovement(true);
+									players[c]->movement.handlePlayerCameraUpdate(true);
+									players[c]->movement.handlePlayerCameraPosition(true);
 									//messagePlayer(0, "%3.2f | %3.2f", players[c]->entity->yaw, oldYaw);
 								}
 							}
 
-							if ( players[clientnum] && players[clientnum]->entity )
+							if ( players[c] && players[c]->entity )
 							{
-								if ( players[clientnum]->entity->isBlind() )
+								if ( players[c]->entity->isBlind() )
 								{
 									if ( globalLightModifierActive == GLOBAL_LIGHT_MODIFIER_STOPPED 
 										|| (globalLightModifierActive == GLOBAL_LIGHT_MODIFIER_DISSIPATING && globalLightModifier < 1.f) )
@@ -3985,7 +5368,7 @@ int main(int argc, char** argv)
 										globalLightModifierActive = GLOBAL_LIGHT_MODIFIER_INUSE;
 										globalLightModifier = 0.f;
 										globalLightTelepathyModifier = 0.f;
-										if ( stats[clientnum]->mask && stats[clientnum]->mask->type == TOOL_BLINDFOLD_TELEPATHY )
+										if ( stats[c]->mask && stats[c]->mask->type == TOOL_BLINDFOLD_TELEPATHY )
 										{
 											for ( node_t* mapNode = map.creatures->first; mapNode != nullptr; mapNode = mapNode->next )
 											{
@@ -3999,11 +5382,11 @@ int main(int argc, char** argv)
 									}
 
 									int PERModifier = 0;
-									if ( stats[clientnum] && stats[clientnum]->EFFECTS[EFF_BLIND]
-										&& !stats[clientnum]->EFFECTS[EFF_ASLEEP] && !stats[clientnum]->EFFECTS[EFF_MESSY] )
+									if ( stats[c] && stats[c]->EFFECTS[EFF_BLIND]
+										&& !stats[c]->EFFECTS[EFF_ASLEEP] && !stats[c]->EFFECTS[EFF_MESSY] )
 									{
 										// blind but not messy or asleep = allow PER to let you see the world a little.
-										PERModifier = players[clientnum]->entity->getPER() / 5;
+										PERModifier = players[c]->entity->getPER() / 5;
 										if ( PERModifier < 0 )
 										{
 											PERModifier = 0;
@@ -4013,7 +5396,7 @@ int main(int argc, char** argv)
 									real_t limit = PERModifier * 0.01;
 									globalLightModifier = std::min(limit, globalLightModifier + 0.0005);
 
-									int telepathyLimit = std::min(64, 48 + players[clientnum]->entity->getPER());
+									int telepathyLimit = std::min(64, 48 + players[c]->entity->getPER());
 									globalLightTelepathyModifier = std::min(telepathyLimit / 255.0, globalLightTelepathyModifier + (0.2 / 255.0));
 								}
 								else
@@ -4073,7 +5456,7 @@ int main(int argc, char** argv)
 
 							//drawFloors(&camera);
 							drawEntities3D(&camera, REALCOLORS);
-							if (shaking && players[clientnum] && players[clientnum]->entity && !gamePaused)
+							if (shaking && players[c] && players[c]->entity && !gamePaused)
 							{
 								camera.ang -= cosspin * drunkextend;
 								camera.vang -= sinspin * drunkextend;
@@ -4088,626 +5471,36 @@ int main(int argc, char** argv)
 
 				DebugStats.t5MainDraw = std::chrono::high_resolution_clock::now();
 
-				updateMessages();
+				for ( int player = 0; player < MAXPLAYERS; ++player )
+				{
+					if ( players[player]->isLocalPlayer() )
+					{
+						players[player]->messageZone.updateMessages();
+					}
+				}
 				if ( !nohud )
 				{
-					if (splitscreen) 
+					for ( int player = 0; player < MAXPLAYERS; ++player )
 					{
-						for (int c = 0; c < MAXPLAYERS; ++c)
+						if ( players[player]->isLocalPlayer() )
 						{
-							if (!client_disconnected[c]) 
-							{
-								handleDamageIndicators(c);
-							}
+							handleDamageIndicators(player);
+							players[player]->messageZone.drawMessages();
 						}
-					} 
-					else 
-					{
-						handleDamageIndicators(0);
 					}
-					drawMessages();
 				}
 
 				DebugStats.t6Messages = std::chrono::high_resolution_clock::now();
 
 				if ( !gamePaused )
 				{
-					// interface
-					if ( !command && (*inputPressed(impulses[IN_STATUS]) || *inputPressed(joyimpulses[INJOY_STATUS])) )
+					if ( newui ) 
 					{
-						*inputPressed(impulses[IN_STATUS]) = 0;
-						*inputPressed(joyimpulses[INJOY_STATUS]) = 0;
-
-						if ( shootmode )
-						{
-							openStatusScreen(GUI_MODE_INVENTORY, INVENTORY_MODE_ITEM);
-						}
-						else
-						{
-							closeAllGUIs(CLOSEGUI_ENABLE_SHOOTMODE, CLOSEGUI_CLOSE_ALL);
-						}
+						newIngameHud();
 					}
-					if (!command && (*inputPressed(impulses[IN_SPELL_LIST]) || *inputPressed(joyimpulses[INJOY_SPELL_LIST])))   //TODO: Move to function in interface or something?
+					else 
 					{
-						*inputPressed(impulses[IN_SPELL_LIST]) = 0;
-						*inputPressed(joyimpulses[INJOY_SPELL_LIST]) = 0;
-						gui_mode = GUI_MODE_INVENTORY;
-						selectedItem = NULL;
-						inventory_mode = INVENTORY_MODE_SPELL;
-
-						if (shootmode)
-						{
-							shootmode = false;
-							attributespage = 0;
-							//proficienciesPage = 0;
-						}
-					}
-					bool hasSpellbook = false;
-					if ( stats[clientnum]->shield && itemCategory(stats[clientnum]->shield) == SPELLBOOK )
-					{
-						hasSpellbook = true;
-					}
-					if (!command && 
-						(*inputPressed(impulses[IN_CAST_SPELL]) 
-							|| (shootmode && *inputPressed(joyimpulses[INJOY_GAME_CAST_SPELL]))
-							|| (hasSpellbook && *inputPressed(impulses[IN_DEFEND])) 
-							|| (hasSpellbook && shootmode && *inputPressed(joyimpulses[INJOY_GAME_DEFEND])) )
-						)
-					{
-						bool allowCasting = true;
-						if ( *inputPressed(impulses[IN_CAST_SPELL]) || *inputPressed(impulses[IN_DEFEND]) )
-						{
-							if (((impulses[IN_CAST_SPELL] == RIGHT_CLICK_IMPULSE || impulses[IN_DEFEND] == RIGHT_CLICK_IMPULSE)
-								&& gui_mode >= GUI_MODE_INVENTORY
-								&& (mouseInsidePlayerInventory() || mouseInsidePlayerHotbar()) 
-								))
-							{
-								allowCasting = false;
-							}
-						}
-
-						if ( (*inputPressed(impulses[IN_DEFEND]) || (*inputPressed(joyimpulses[INJOY_GAME_DEFEND]))) && hasSpellbook
-							&& players[clientnum] && players[clientnum]->entity )
-						{
-							if ( players[clientnum]->entity->effectShapeshift != NOTHING )
-							{
-								if ( players[clientnum]->entity->effectShapeshift == CREATURE_IMP )
-								{
-									// imp allowed to cast via spellbook.
-								}
-								else
-								{
-									allowCasting = false;
-								}
-							}
-
-							if ( *inputPressed(impulses[IN_DEFEND]) && impulses[IN_DEFEND] == 285 && itemMenuOpen ) // bound to right click, has context menu open.
-							{
-								allowCasting = false;
-							}
-							else
-							{
-								if ( allowCasting && stats[clientnum]->EFFECTS[EFF_BLIND] )
-								{
-									messagePlayer(clientnum, language[3863]); // prevent casting of spell.
-									allowCasting = false;
-									*inputPressed(impulses[IN_DEFEND]) = 0;
-									*inputPressed(joyimpulses[INJOY_GAME_DEFEND]) = 0;
-								}
-							}
-						}
-
-						if ( allowCasting )
-						{
-							*inputPressed(impulses[IN_CAST_SPELL]) = 0;
-							if ( shootmode )
-							{
-								*inputPressed(joyimpulses[INJOY_GAME_CAST_SPELL]) = 0;
-							}
-							if (players[clientnum] && players[clientnum]->entity)
-							{
-								if ( conductGameChallenges[CONDUCT_BRAWLER] || achievementBrawlerMode )
-								{
-									if ( achievementBrawlerMode && conductGameChallenges[CONDUCT_BRAWLER] )
-									{
-										messagePlayer(clientnum, language[2999]); // prevent casting of spell.
-									}
-									else
-									{
-										if ( achievementBrawlerMode && selected_spell != nullptr )
-										{
-											messagePlayer(clientnum, language[2998]); // notify no longer eligible for achievement but still cast.
-										}
-										if ( hasSpellbook && (*inputPressed(impulses[IN_DEFEND]) || *inputPressed(joyimpulses[INJOY_GAME_DEFEND])) )
-										{
-											castSpellInit(players[clientnum]->entity->getUID(), getSpellFromID(getSpellIDFromSpellbook(stats[clientnum]->shield->type)), true);
-										}
-										else
-										{
-											castSpellInit(players[clientnum]->entity->getUID(), selected_spell, false);
-										}
-										if ( selected_spell != nullptr )
-										{
-											conductGameChallenges[CONDUCT_BRAWLER] = 0;
-										}
-									}
-								}
-								else
-								{
-									if ( hasSpellbook && (*inputPressed(impulses[IN_DEFEND]) || *inputPressed(joyimpulses[INJOY_GAME_DEFEND])) )
-									{
-										castSpellInit(players[clientnum]->entity->getUID(), getSpellFromID(getSpellIDFromSpellbook(stats[clientnum]->shield->type)), true);
-									}
-									else
-									{
-										castSpellInit(players[clientnum]->entity->getUID(), selected_spell, false);
-									}
-								}
-							}
-							*inputPressed(impulses[IN_DEFEND]) = 0;
-							*inputPressed(joyimpulses[INJOY_GAME_DEFEND]) = 0;
-						}
-					}
-					if ( !command && *inputPressed(impulses[IN_TOGGLECHATLOG]) || (shootmode && *inputPressed(joyimpulses[INJOY_GAME_TOGGLECHATLOG])) )
-					{
-						hide_statusbar = !hide_statusbar;
-						*inputPressed(impulses[IN_TOGGLECHATLOG]) = 0;
-						*inputPressed(joyimpulses[INJOY_GAME_TOGGLECHATLOG]) = 0;
-						playSound(139, 64);
-					}
-
-					if ( !command && (*inputPressed(impulses[IN_FOLLOWERMENU_CYCLENEXT]) || *inputPressed(joyimpulses[INJOY_GAME_FOLLOWERMENU_CYCLE])) )
-					{
-						FollowerMenu.selectNextFollower();
-						proficienciesPage = 1;
-						if ( shootmode && !lock_right_sidebar )
-						{
-							openStatusScreen(GUI_MODE_INVENTORY, INVENTORY_MODE_ITEM);
-						}
-						*inputPressed(impulses[IN_FOLLOWERMENU_CYCLENEXT]) = 0;
-						*inputPressed(joyimpulses[INJOY_GAME_FOLLOWERMENU_CYCLE]) = 0;
-					}
-
-					// commands
-					if ( ( *inputPressed(impulses[IN_CHAT]) || *inputPressed(impulses[IN_COMMAND]) ) && !command )
-					{
-						*inputPressed(impulses[IN_CHAT]) = 0;
-						cursorflash = ticks;
-						command = true;
-						if ( !(*inputPressed(impulses[IN_COMMAND])) )
-						{
-							strcpy(command_str, "");
-						}
-						else
-						{
-							strcpy(command_str, "/");
-						}
-						inputstr = command_str;
-						*inputPressed(impulses[IN_COMMAND]) = 0;
-						SDL_StartTextInput();
-
-						FollowerMenu.closeFollowerMenuGUI();
-					}
-					if ( command )
-					{
-						if ( !SDL_IsTextInputActive() )
-						{
-							SDL_StartTextInput();
-							inputstr = command_str;
-						}
-						//strncpy(command_str,inputstr,127);
-						inputlen = 127;
-						if ( keystatus[SDL_SCANCODE_ESCAPE] )   // escape
-						{
-							keystatus[SDL_SCANCODE_ESCAPE] = 0;
-							chosen_command = NULL;
-							command = 0;
-						}
-						if ( keystatus[SDL_SCANCODE_RETURN] )   // enter
-						{
-							keystatus[SDL_SCANCODE_RETURN] = 0;
-							command = false;
-
-							strncpy(command_str, messageSanitizePercentSign(command_str, nullptr).c_str(), 127);
-
-							if ( multiplayer != CLIENT )
-							{
-								if ( command_str[0] == '/' )
-								{
-									// backslash invokes command procedure
-									messagePlayer(clientnum, command_str);
-									consoleCommand(command_str);
-								}
-								else
-								{
-									if (strcmp(command_str, ""))
-									{
-										char chatstring[256];
-										strcpy(chatstring, language[739]);
-										strcat(chatstring, command_str);
-										Uint32 color = SDL_MapRGBA(mainsurface->format, 0, 255, 255, 255);
-										messagePlayerColor(clientnum, color, chatstring);
-										playSound(238, 64);
-										if ( multiplayer == SERVER )
-										{
-											// send message to all clients
-											for ( c = 1; c < MAXPLAYERS; c++ )
-											{
-												if ( client_disconnected[c] )
-												{
-													continue;
-												}
-												strcpy((char*)net_packet->data, "MSGS");
-												// strncpy() does not copy N bytes if a terminating null is encountered first
-												// see http://www.cplusplus.com/reference/cstring/strncpy/
-												// see https://en.cppreference.com/w/c/string/byte/strncpy
-												// GCC throws a warning (intended) when the length argument to strncpy() in any
-												// way depends on strlen(src) to discourage this (and related) construct(s).
-
-												strncpy(chatstring, stats[0]->name, 10);
-												chatstring[std::min<size_t>(strlen(stats[0]->name), 10)] = 0; //TODO: Why are size_t and int being compared?
-												strcat(chatstring, ": ");
-												strcat(chatstring, command_str);
-												SDLNet_Write32(color, &net_packet->data[4]);
-												strcpy((char*)(&net_packet->data[8]), chatstring);
-												net_packet->address.host = net_clients[c - 1].host;
-												net_packet->address.port = net_clients[c - 1].port;
-												net_packet->len = 8 + strlen(chatstring) + 1;
-												sendPacketSafe(net_sock, -1, net_packet, c - 1);
-											}
-										}
-									}
-									else
-									{
-										strcpy(command_str, "");
-									}
-								}
-							}
-							else
-							{
-								if ( command_str[0] == '/' )
-								{
-									// backslash invokes command procedure
-									messagePlayer(clientnum, command_str);
-									consoleCommand(command_str);
-								}
-								else
-								{
-									if (strcmp(command_str, ""))
-									{
-										char chatstring[256];
-										strcpy(chatstring, language[739]);
-										strcat(chatstring, command_str);
-										Uint32 color = SDL_MapRGBA(mainsurface->format, 0, 255, 255, 255);
-										messagePlayerColor(clientnum, color, chatstring);
-										playSound(238, 64);
-
-										// send message to server
-										strcpy((char*)net_packet->data, "MSGS");
-										net_packet->data[4] = clientnum;
-										SDLNet_Write32(color, &net_packet->data[5]);
-										strcpy((char*)(&net_packet->data[9]), command_str);
-										net_packet->address.host = net_server.host;
-										net_packet->address.port = net_server.port;
-										net_packet->len = 9 + strlen(command_str) + 1;
-										sendPacketSafe(net_sock, -1, net_packet, 0);
-									}
-									else
-									{
-										strcpy(command_str, "");
-									}
-								}
-							}
-							//In either case, save this in the command history.
-							if (strcmp(command_str, ""))
-							{
-								saveCommand(command_str);
-							}
-							chosen_command = NULL;
-						}
-						ttfPrintTextFormatted(ttf16, MESSAGE_X_OFFSET, MESSAGE_Y_OFFSET, ">%s", command_str);
-						if ( (ticks - cursorflash) % TICKS_PER_SECOND < TICKS_PER_SECOND / 2 )
-						{
-							int x;
-							TTF_SizeUTF8(ttf16, command_str, &x, NULL);
-							ttfPrintTextFormatted(ttf16, MESSAGE_X_OFFSET + x + TTF16_WIDTH, MESSAGE_Y_OFFSET, "_");
-						}
-					}
-					else
-					{
-						if ( SDL_IsTextInputActive() )
-						{
-							SDL_StopTextInput();
-						}
-					}
-
-					// other status
-					if ( shootmode == false )
-					{
-						SDL_SetRelativeMouseMode(SDL_FALSE);
-					}
-					else
-					{
-						//Do these get called every frame? Might be better to move this stuff into an if (went_back_into_shootmode) { ... } thing.
-						//2-3 years later...yes, it is run every frame.
-						if (identifygui_appraising)
-						{
-							//Close the identify GUI if appraising.
-							identifygui_active = false;
-							identifygui_appraising = false;
-
-							//Cleanup identify GUI gamecontroller code here.
-							selectedIdentifySlot = -1;
-						}
-
-						if ( removecursegui_active )
-						{
-							closeRemoveCurseGUI();
-						}
-
-						GenericGUI.closeGUI();
-
-						if ( book_open )
-						{
-							closeBookGUI();
-						}
-
-						gui_clickdrag = false; //Just a catchall to make sure that any ongoing GUI dragging ends when the GUI is closed.
-
-						if (capture_mouse)
-						{
-							SDL_SetRelativeMouseMode(SDL_TRUE);
-						}
-
-					}
-
-					DebugStats.t7Inputs = std::chrono::high_resolution_clock::now();
-
-					// Draw the static HUD elements
-					if ( !nohud )
-					{
-						//auto tStartMinimapDraw = std::chrono::high_resolution_clock::now();
-						drawMinimap(); // Draw the Minimap
-						/*auto tEndMinimapDraw = std::chrono::high_resolution_clock::now();
-						double timeTaken = 1000 * std::chrono::duration_cast<std::chrono::duration<double>>(tEndMinimapDraw - tStartMinimapDraw).count();
-						printlog("Minimap draw time: %.5f", timeTaken);*/
-						drawStatus(); // Draw the Status Bar (Hotbar, Hungry/Minotaur Icons, Tooltips, etc.)
-					}
-
-					DebugStats.t8Status = std::chrono::high_resolution_clock::now();
-
-					drawSustainedSpells();
-					updateAppraisalItemBox();
-
-					// inventory and stats
-					if ( shootmode == false )
-					{
-						if (gui_mode == GUI_MODE_INVENTORY)
-						{
-							updateCharacterSheet();
-							updatePlayerInventory();
-							updateChestInventory();
-							updateIdentifyGUI();
-							updateRemoveCurseGUI();
-							GenericGUI.updateGUI();
-							updateBookGUI();
-							//updateRightSidebar();
-
-						}
-						else if (gui_mode == GUI_MODE_MAGIC)
-						{
-							updateCharacterSheet();
-							updateMagicGUI();
-						}
-						else if (gui_mode == GUI_MODE_SHOP)
-						{
-							updateCharacterSheet();
-							updatePlayerInventory();
-							updateShopWindow();
-						}
-
-						if ( proficienciesPage == 1 )
-						{
-							drawPartySheet();
-						}
-						else
-						{
-							drawSkillsSheet();
-						}
-					}
-					else
-					{
-						if ( lock_right_sidebar )
-						{
-							if ( proficienciesPage == 1 )
-							{
-								drawPartySheet();
-							}
-							else
-							{
-								drawSkillsSheet();
-							}
-						}
-					}
-					if ( (shootmode == false && gui_mode == GUI_MODE_INVENTORY) || show_game_timer_always )
-					{
-						Uint32 sec = (completionTime / TICKS_PER_SECOND) % 60;
-						Uint32 min = ((completionTime / TICKS_PER_SECOND) / 60) % 60;
-						Uint32 hour = ((completionTime / TICKS_PER_SECOND) / 60) / 60;
-						printTextFormatted(font12x12_bmp, xres - 12 * 9, 12, "%02d:%02d:%02d", hour, min, sec);
-					}
-
-					DebugStats.t9GUI = std::chrono::high_resolution_clock::now();
-
-					UIToastNotificationManager.drawNotifications(movie, true); // draw this before the cursors
-
-					// pointer in inventory screen
-					if (shootmode == false)
-					{
-						if (selectedItem)
-						{
-							pos.x = mousex - 15;
-							pos.y = mousey - 15;
-							pos.w = 32 * uiscale_inventory;
-							pos.h = 32 * uiscale_inventory;
-							drawImageScaled(itemSprite(selectedItem), NULL, &pos);
-							if ( selectedItem->count > 1 )
-							{
-								ttfPrintTextFormatted(ttf8, pos.x + 24 * uiscale_inventory, pos.y + 24 * uiscale_inventory, "%d", selectedItem->count);
-							}
-							if ( itemCategory(selectedItem) != SPELL_CAT )
-							{
-								if ( itemIsEquipped(selectedItem, clientnum) )
-								{
-									pos.y += 16;
-									drawImage(equipped_bmp, NULL, &pos);
-								}
-								else if ( selectedItem->status == BROKEN )
-								{
-									pos.y += 16;
-									drawImage(itembroken_bmp, NULL, &pos);
-								}
-							}
-							else
-							{
-								spell_t* spell = getSpellFromItem(selectedItem);
-								if ( selected_spell == spell && 
-									(selected_spell_last_appearance == selectedItem->appearance || selected_spell_last_appearance == -1) )
-								{
-									pos.y += 16;
-									drawImage(equipped_bmp, NULL, &pos);
-								}
-							}
-						}
-						else if ( FollowerMenu.selectMoveTo &&
-							(FollowerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT
-							|| FollowerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT) )
-						{
-							pos.x = mousex - cursor_bmp->w / 2;
-							pos.y = mousey - cursor_bmp->h / 2;
-							drawImageAlpha(cursor_bmp, NULL, &pos, 192);
-							if ( FollowerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT )
-							{
-								if ( FollowerMenu.followerToCommand
-									&& (FollowerMenu.followerToCommand->getMonsterTypeFromSprite() == SENTRYBOT
-										|| FollowerMenu.followerToCommand->getMonsterTypeFromSprite() == SPELLBOT)
-									)
-								{
-									ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[3650]);
-								}
-								else
-								{
-									ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[3039]);
-								}
-							}
-							else
-							{
-								if ( !strcmp(FollowerMenu.interactText, "") )
-								{
-									if ( FollowerMenu.followerToCommand )
-									{
-										int type = FollowerMenu.followerToCommand->getMonsterTypeFromSprite();
-										if ( FollowerMenu.allowedInteractItems(type)
-											|| FollowerMenu.allowedInteractFood(type)
-											|| FollowerMenu.allowedInteractWorld(type)
-										)
-										{
-											ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, "Interact with...");
-										}
-										else
-										{
-											ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, "Attack...");
-										}
-									}
-									else
-									{
-										ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, "Interact with...");
-									}
-								}
-								else
-								{
-									ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, "%s", FollowerMenu.interactText);
-								}
-							}
-						}
-						else if (draw_cursor)
-						{
-							pos.x = mousex - cursor_bmp->w / 2;
-							pos.y = mousey - cursor_bmp->h / 2;
-							pos.w = 0;
-							pos.h = 0;
-							drawImageAlpha(cursor_bmp, NULL, &pos, 192);
-						}
-					}
-					else if ( !nohud )
-					{
-						pos.x = xres / 2 - cross_bmp->w / 2;
-						pos.y = yres / 2 - cross_bmp->h / 2;
-						pos.w = 0;
-						pos.h = 0;
-						if ( FollowerMenu.selectMoveTo && (FollowerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT
-							|| FollowerMenu.optionSelected == ALLY_CMD_ATTACK_SELECT) )
-						{
-							pos.x = xres / 2 - cursor_bmp->w / 2;
-							pos.y = yres / 2 - cursor_bmp->h / 2;
-							drawImageAlpha(cursor_bmp, NULL, &pos, 192);
-							if ( FollowerMenu.optionSelected == ALLY_CMD_MOVETO_SELECT )
-							{
-								if ( FollowerMenu.followerToCommand
-									&& (FollowerMenu.followerToCommand->getMonsterTypeFromSprite() == SENTRYBOT
-										|| FollowerMenu.followerToCommand->getMonsterTypeFromSprite() == SPELLBOT)
-									)
-								{
-									ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[3650]);
-								}
-								else
-								{
-									ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[3039]);
-								}
-							}
-							else
-							{
-								if ( !strcmp(FollowerMenu.interactText, "") )
-								{
-									if ( FollowerMenu.followerToCommand )
-									{
-										int type = FollowerMenu.followerToCommand->getMonsterTypeFromSprite();
-										if ( FollowerMenu.allowedInteractItems(type)
-											|| FollowerMenu.allowedInteractFood(type)
-											|| FollowerMenu.allowedInteractWorld(type)
-											)
-										{
-											ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, "Interact with...");
-										}
-										else
-										{
-											ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, "Attack...");
-										}
-									}
-									else
-									{
-										ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, "Interact with...");
-									}
-								}
-								else
-								{
-									ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, "%s", FollowerMenu.interactText);
-								}
-							}
-						}
-						else
-						{
-							if ( players[clientnum] && players[clientnum]->entity && stats[clientnum]
-								&& stats[clientnum]->defending )
-							{
-								bool foundTinkeringKit = false;
-								if ( stats[clientnum]->shield && stats[clientnum]->shield->type == TOOL_TINKERING_KIT )
-								{
-									ttfPrintTextFormatted(ttf12, pos.x + 24, pos.y + 24, language[3663]);
-								}
-							}
-							drawImageAlpha(cross_bmp, NULL, &pos, 128);
-						}
+						ingameHud();
 					}
 				}
 				else if ( !multiplayer )
@@ -4756,26 +5549,37 @@ int main(int argc, char** argv)
 					UIToastNotificationManager.drawNotifications(movie, true); // draw this before the cursor
 				}
 
-				if (((subwindow && !shootmode) || gamePaused) && draw_cursor)
+				for ( int i = 0; i < MAXPLAYERS; ++i )
 				{
-					pos.x = mousex - cursor_bmp->w / 2;
-					pos.y = mousey - cursor_bmp->h / 2;
-					pos.w = 0;
-					pos.h = 0;
-					drawImageAlpha(cursor_bmp, NULL, &pos, 192);
+					if ( !players[i]->isLocalPlayer() )
+					{
+						continue;
+					}
+					if (((subwindow && !players[i]->shootmode) || gamePaused))
+					{
+						if ( inputs.getVirtualMouse(i)->draw_cursor )
+						{
+							pos.x = inputs.getMouse(i, Inputs::X) - cursor_bmp->w / 2;
+							pos.y = inputs.getMouse(i, Inputs::Y) - cursor_bmp->h / 2;
+							pos.w = 0;
+							pos.h = 0;
+							drawImageAlpha(cursor_bmp, NULL, &pos, 192);
+						}
+					}
+
+					if ( !players[i]->shootmode )
+					{
+						if ( *inputPressedForPlayer(i, impulses[IN_HOTBAR_SCROLL_RIGHT]) )
+						{
+							*inputPressedForPlayer(i, impulses[IN_HOTBAR_SCROLL_RIGHT]) = 0;
+						}
+						if ( *inputPressedForPlayer(i, impulses[IN_HOTBAR_SCROLL_LEFT]) )
+						{
+							*inputPressedForPlayer(i, impulses[IN_HOTBAR_SCROLL_LEFT]) = 0;
+						}
+					}
 				}
 
-				if ( !shootmode )
-				{
-					if ( *inputPressed(impulses[IN_HOTBAR_SCROLL_RIGHT]) )
-					{
-						*inputPressed(impulses[IN_HOTBAR_SCROLL_RIGHT]) = 0;
-					}
-					if ( *inputPressed(impulses[IN_HOTBAR_SCROLL_LEFT]) )
-					{
-						*inputPressed(impulses[IN_HOTBAR_SCROLL_LEFT]) = 0;
-					}
-				}
 			}
 
 			// fade in/out effect
@@ -4809,8 +5613,8 @@ int main(int argc, char** argv)
 				}
 				if ( DebugStats.displayStats )
 				{
-					printTextFormatted(font8x8_bmp, 8, 20, DebugStats.debugOutput);
-					printTextFormatted(font8x8_bmp, 8, 100, DebugStats.debugEventOutput);
+					printTextFormatted(font8x8_bmp, 8, 200 + 20, DebugStats.debugOutput);
+					printTextFormatted(font8x8_bmp, 8, 200 + 100, DebugStats.debugEventOutput);
 				}
 			}
 
@@ -4843,23 +5647,26 @@ int main(int argc, char** argv)
 				}
 			}
 
-			// selectedEntityGimpTimer will only allow the game to process a right click entity click 1-2 times
-			// otherwise if we interacted with a menu the gimp timer does not increment. (it would have auto reset the status of IN_USE)
-			if ( !(*inputPressed(impulses[IN_USE])) && !(*inputPressed(joyimpulses[INJOY_GAME_USE])) )
+			for ( int i = 0; i < MAXPLAYERS; ++i )
 			{
-				selectedEntityGimpTimer = 0;
-			}
-			else
-			{
-				if ( selectedEntityGimpTimer >= 2 )
+				// selectedEntityGimpTimer will only allow the game to process a right click entity click 1-2 times
+				// otherwise if we interacted with a menu the gimp timer does not increment. (it would have auto reset the status of IN_USE)
+				if ( !(*inputPressedForPlayer(i, impulses[IN_USE])) && !(inputs.bControllerInputPressed(i, INJOY_GAME_USE)) )
 				{
-					if ( *inputPressed(impulses[IN_USE]) )
+					players[i]->movement.selectedEntityGimpTimer = 0;
+				}
+				else
+				{
+					if ( players[i]->movement.selectedEntityGimpTimer >= 2 )
 					{
-						*inputPressed(impulses[IN_USE]) = 0;
-					}
-					if ( *inputPressed(joyimpulses[INJOY_GAME_USE]) )
-					{
-						*inputPressed(joyimpulses[INJOY_GAME_USE]) = 0;
+						if ( *inputPressedForPlayer(i, impulses[IN_USE]) )
+						{
+							*inputPressedForPlayer(i, impulses[IN_USE]) = 0;
+						}
+						if ( inputs.bControllerInputPressed(i, INJOY_GAME_USE) )
+						{
+							inputs.controllerClearInput(i, INJOY_GAME_USE);
+						}
 					}
 				}
 			}
@@ -4875,6 +5682,7 @@ int main(int argc, char** argv)
 		deinitGame();
 		return deinitApp();
 	}
+#ifndef NINTENDO
 	catch (const std::exception &exc)
 	{
 		// catch anything thrown within try block that derives from std::exception
@@ -4887,6 +5695,11 @@ int main(int argc, char** argv)
 		std::cerr << "UNKNOWN EXCEPTION CAUGHT!\n";
 		return 1;
 	}
+#endif // NINTENDO
+
+#ifdef NINTENDO
+	nxTerm();
+#endif // NINTENDO
 }
 
 void DebugStatsClass::storeStats()

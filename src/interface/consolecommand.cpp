@@ -27,6 +27,8 @@
 #include "../magic/magic.hpp"
 #include "../mod_tools.hpp"
 #include "../collision.hpp"
+#include "../player.hpp"
+#include "../ui/GameUI.hpp"
 
 bool spamming = false;
 bool showfirst = false;
@@ -726,30 +728,30 @@ void consoleCommand(char const * const command_str)
 			joyimpulses[INJOY_GAME_HOTBAR_ACTIVATE] = atoi(&command_str[9]);
 			printlog("[GAMEPAD] Bound INJOY_GAME_HOTBAR_ACTIVATE: %d\n", atoi(&command_str[9]));
 		}
-		else if ( strstr(command_str, "INJOY_GAME_GAME_MINIMAPSCALE") )
+		else if ( strstr(command_str, "INJOY_GAME_MINIMAPSCALE") )
 		{
 			joyimpulses[INJOY_GAME_MINIMAPSCALE] = atoi(&command_str[9]);
-			printlog("[GAMEPAD] Bound INJOY_GAME_GAME_MINIMAPSCALE: %d\n", atoi(&command_str[9]));
+			printlog("[GAMEPAD] Bound INJOY_GAME_MINIMAPSCALE: %d\n", atoi(&command_str[9]));
 		}
-		else if ( strstr(command_str, "INJOY_GAME_GAME_TOGGLECHATLOG") )
+		else if ( strstr(command_str, "INJOY_GAME_TOGGLECHATLOG") )
 		{
 			joyimpulses[INJOY_GAME_TOGGLECHATLOG] = atoi(&command_str[9]);
-			printlog("[GAMEPAD] Bound INJOY_GAME_GAME_TOGGLECHATLOG: %d\n", atoi(&command_str[9]));
+			printlog("[GAMEPAD] Bound INJOY_GAME_TOGGLECHATLOG: %d\n", atoi(&command_str[9]));
 		}
-		else if ( strstr(command_str, "INJOY_GAME_GAME_FOLLOWERMENU_OPEN") )
+		else if ( strstr(command_str, "INJOY_GAME_FOLLOWERMENU_OPEN") )
 		{
 			joyimpulses[INJOY_GAME_FOLLOWERMENU] = atoi(&command_str[9]);
-			printlog("[GAMEPAD] Bound INJOY_GAME_GAME_FOLLOWERMENU_OPEN: %d\n", atoi(&command_str[9]));
+			printlog("[GAMEPAD] Bound INJOY_GAME_FOLLOWERMENU_OPEN: %d\n", atoi(&command_str[9]));
 		}
-		else if ( strstr(command_str, "INJOY_GAME_GAME_FOLLOWERMENU_LASTCMD") )
+		else if ( strstr(command_str, "INJOY_GAME_FOLLOWERMENU_LASTCMD") )
 		{
 			joyimpulses[INJOY_GAME_FOLLOWERMENU_LASTCMD] = atoi(&command_str[9]);
-			printlog("[GAMEPAD] Bound INJOY_GAME_GAME_FOLLOWERMENU_LASTCMD: %d\n", atoi(&command_str[9]));
+			printlog("[GAMEPAD] Bound INJOY_GAME_FOLLOWERMENU_LASTCMD: %d\n", atoi(&command_str[9]));
 		}
-		else if ( strstr(command_str, "INJOY_GAME_GAME_FOLLOWERMENU_CYCLENEXT") )
+		else if ( strstr(command_str, "INJOY_GAME_FOLLOWERMENU_CYCLENEXT") )
 		{
 			joyimpulses[INJOY_GAME_FOLLOWERMENU_CYCLE] = atoi(&command_str[9]);
-			printlog("[GAMEPAD] Bound INJOY_GAME_GAME_FOLLOWERMENU_CYCLENEXT: %d\n", atoi(&command_str[9]));
+			printlog("[GAMEPAD] Bound INJOY_GAME_FOLLOWERMENU_CYCLENEXT: %d\n", atoi(&command_str[9]));
 		}
 		else if ( strstr(command_str, "INJOY_MENU_CHEST_GRAB_ALL"))
 		{
@@ -996,6 +998,7 @@ void consoleCommand(char const * const command_str)
 			}
 			for ( c = 0; c < NUM_HOTBAR_SLOTS; c++ )
 			{
+				auto& hotbar = players[clientnum]->hotbar.slots();
 				hotbar[c].item = 0;
 			}
 			myStats->weapon = newItem(STEEL_SWORD, SERVICABLE, 0, 1, rand(), true, &myStats->inventory);
@@ -1050,6 +1053,7 @@ void consoleCommand(char const * const command_str)
 			}
 			for ( c = 0; c < NUM_HOTBAR_SLOTS; c++ )
 			{
+				auto& hotbar = players[clientnum]->hotbar.slots();
 				hotbar[c].item = 0;
 			}
 			myStats->weapon = newItem(STEEL_SWORD, SERVICABLE, 0, 1, rand(), true, &myStats->inventory);
@@ -1091,6 +1095,7 @@ void consoleCommand(char const * const command_str)
 			}
 			for ( c = 0; c < NUM_HOTBAR_SLOTS; c++ )
 			{
+				auto& hotbar = players[clientnum]->hotbar.slots();
 				hotbar[c].item = 0;
 			}
 			myStats->weapon = newItem(STEEL_SWORD, SERVICABLE, 0, 1, rand(), true, &myStats->inventory);
@@ -1308,14 +1313,10 @@ void consoleCommand(char const * const command_str)
 
 		std::string modelsDirectory = PHYSFS_getRealDir("models/models.txt");
 		modelsDirectory.append(PHYSFS_getDirSeparator()).append("models/models.txt");
-		FILE *fp = openDataFile(modelsDirectory.c_str(), "r");
-		for ( c = 0; !feof(fp); c++ )
+		File *fp = openDataFile(modelsDirectory.c_str(), "r");
+		for ( c = 0; !fp->eof(); c++ )
 		{
-			fscanf(fp, "%s", name2);
-			while ( fgetc(fp) != '\n' ) if ( feof(fp) )
-			{
-				break;
-			}
+			fp->gets2(name2, 128);
 			if ( c >= startIndex && c < endIndex )
 			{
 				if ( models[c] != NULL )
@@ -1349,7 +1350,7 @@ void consoleCommand(char const * const command_str)
 				models[c] = loadVoxel(name2);
 			}
 		}
-		fclose(fp);
+		FileIO::close(fp);
 		//messagePlayer(clientnum, language[2354]);
 		messagePlayer(clientnum, language[2355], startIndex, endIndex);
 		generatePolyModels(startIndex, endIndex, true);
@@ -1699,10 +1700,13 @@ void consoleCommand(char const * const command_str)
 	}
 	else if ( !strncmp(command_str, "/locksidebar", 12) )
 	{
-		lock_right_sidebar = (lock_right_sidebar == false);
-		if ( lock_right_sidebar )
+		if ( players[clientnum] ) // warning - this doesn't exist when loadConfig() is called on init.
 		{
-			proficienciesPage = 1;
+			players[clientnum]->characterSheet.lock_right_sidebar = (players[clientnum]->characterSheet.lock_right_sidebar == false);
+			if ( players[clientnum]->characterSheet.lock_right_sidebar )
+			{
+				players[clientnum]->characterSheet.proficienciesPage = 1;
+			}
 		}
 	}
 	else if ( !strncmp(command_str, "/showgametimer", 14) )
@@ -1744,12 +1748,198 @@ void consoleCommand(char const * const command_str)
 		//startfloor = std::min(startfloor, numlevels);
 		printlog("Start floor is %d.", startfloor);
 	}
-	else if (!strncmp(command_str, "/splitscreen", 12))
+	else if ( !strncmp(command_str, "/splitscreen ", 13) 
+		|| !strncmp(command_str, "/splitscreen", 12)
+		|| !strncmp(command_str, "/splitscreen2vertical", 21) )
 	{
+		int numPlayers = 4;
+		bool verticalSplitscreen = !strncmp(command_str, "/splitscreen2vertical", 21);
+
+		if ( verticalSplitscreen )
+		{
+			numPlayers = 2;
+		}
+		else if ( !strncmp(command_str, "/splitscreen ", 13) )
+		{
+			numPlayers = std::min(4, std::max(atoi(&command_str[13]), 2));
+		}
+
 		splitscreen = !splitscreen;
-		client_disconnected[1] = false;
-		client_disconnected[2] = false;
-		client_disconnected[3] = false;
+
+		if ( splitscreen )
+		{
+			for ( int i = 1; i < MAXPLAYERS; ++i )
+			{
+				if ( i < numPlayers )
+				{
+					client_disconnected[i] = false;
+				}
+			}
+		}
+		else
+		{
+			client_disconnected[1] = true;
+			client_disconnected[2] = true;
+			client_disconnected[3] = true;
+		}
+
+		int playercount = 1;
+		for ( int i = 1; i < MAXPLAYERS; ++i )
+		{
+			if ( client_disconnected[i] )
+			{
+				players[i]->bSplitscreen = false;
+				players[i]->splitScreenType = Player::SPLITSCREEN_DEFAULT;
+			}
+			else
+			{
+				players[i]->bSplitscreen = true;
+			}
+
+			if ( players[i]->isLocalPlayer() )
+			{
+				++playercount;
+			}
+		}
+
+
+		for ( int i = 0; i < MAXPLAYERS; ++i )
+		{
+			if ( verticalSplitscreen )
+			{
+				players[i]->splitScreenType = Player::SPLITSCREEN_VERTICAL;
+			}
+			else
+			{
+				players[i]->splitScreenType = Player::SPLITSCREEN_DEFAULT;
+			}
+
+			if ( !splitscreen )
+			{
+				players[i]->camera().winx = 0;
+				players[i]->camera().winy = 0;
+				players[i]->camera().winw = xres;
+				players[i]->camera().winh = yres;
+			}
+			else
+			{
+				if ( playercount == 1 )
+				{
+					players[i]->camera().winx = 0;
+					players[i]->camera().winy = 0;
+					players[i]->camera().winw = xres;
+					players[i]->camera().winh = yres;
+				}
+				else if ( playercount == 2 )
+				{
+					if ( players[i]->splitScreenType == Player::SPLITSCREEN_VERTICAL )
+					{
+						// divide screen vertically
+						players[i]->camera().winx = i * xres / 2;
+						players[i]->camera().winy = 0;
+						players[i]->camera().winw = xres / 2;
+						players[i]->camera().winh = yres;
+					}
+					else
+					{
+						// divide screen horizontally
+						players[i]->camera().winx = 0;
+						players[i]->camera().winy = i * yres / 2;
+						players[i]->camera().winw = xres;
+						players[i]->camera().winh = yres / 2;
+					}
+				}
+				else if ( playercount >= 3 )
+				{
+					// divide screen into quadrants
+					players[i]->camera().winx = (i % 2) * xres / 2;
+					players[i]->camera().winy = (i / 2) * yres / 2;
+					players[i]->camera().winw = xres / 2;
+					players[i]->camera().winh = yres / 2;
+				}
+			}
+
+			inputs.getVirtualMouse(i)->x = players[i]->camera_x1() + players[i]->camera_width() / 2;
+			inputs.getVirtualMouse(i)->y = players[i]->camera_y1() + players[i]->camera_height() / 2;
+
+			if ( i > 0 )
+			{
+				stats[i]->sex = static_cast<sex_t>(rand() % 2);
+				stats[i]->appearance = rand() % 18;
+				stats[i]->clearStats();
+				client_classes[i] = rand() % (CLASS_MONK + 1);//NUMCLASSES;
+				stats[i]->playerRace = RACE_HUMAN;
+				if ( enabledDLCPack1 || enabledDLCPack2 )
+				{
+					stats[i]->playerRace = rand() % NUMPLAYABLERACES;
+					if ( !enabledDLCPack1 )
+					{
+						while ( stats[i]->playerRace == RACE_SKELETON || stats[i]->playerRace == RACE_VAMPIRE
+							|| stats[i]->playerRace == RACE_SUCCUBUS || stats[i]->playerRace == RACE_GOATMAN )
+						{
+							stats[i]->playerRace = rand() % NUMPLAYABLERACES;
+						}
+					}
+					else if ( !enabledDLCPack2 )
+					{
+						while ( stats[i]->playerRace == RACE_AUTOMATON || stats[i]->playerRace == RACE_GOBLIN
+							|| stats[i]->playerRace == RACE_INCUBUS || stats[i]->playerRace == RACE_INSECTOID )
+						{
+							stats[i]->playerRace = rand() % NUMPLAYABLERACES;
+						}
+					}
+					if ( stats[i]->playerRace == RACE_INCUBUS )
+					{
+						stats[i]->sex = MALE;
+					}
+					else if ( stats[i]->playerRace == RACE_SUCCUBUS )
+					{
+						stats[i]->sex = FEMALE;
+					}
+
+					if ( stats[i]->playerRace == RACE_HUMAN )
+					{
+						client_classes[i] = rand() % (NUMCLASSES);
+						if ( !enabledDLCPack1 )
+						{
+							while ( client_classes[i] == CLASS_CONJURER || client_classes[i] == CLASS_ACCURSED
+								|| client_classes[i] == CLASS_MESMER || client_classes[i] == CLASS_BREWER )
+							{
+								client_classes[i] = rand() % (NUMCLASSES);
+							}
+						}
+						else if ( !enabledDLCPack2 )
+						{
+							while ( client_classes[i] == CLASS_HUNTER || client_classes[i] == CLASS_SHAMAN
+								|| client_classes[i] == CLASS_PUNISHER || client_classes[i] == CLASS_MACHINIST )
+							{
+								client_classes[i] = rand() % (NUMCLASSES);
+							}
+						}
+						stats[i]->appearance = rand() % 18;
+					}
+					else
+					{
+						client_classes[i] = rand() % (CLASS_MONK + 2);
+						if ( client_classes[i] > CLASS_MONK )
+						{
+							client_classes[i] = CLASS_MONK + stats[i]->playerRace; // monster specific classes.
+						}
+						stats[i]->appearance = 0;
+					}
+				}
+				else
+				{
+					stats[i]->playerRace = RACE_HUMAN;
+					stats[i]->appearance = rand() % 18;
+				}
+				strcpy(stats[i]->name, randomPlayerNamesFemale[rand() % randomPlayerNamesFemale.size()].c_str());
+				bool oldIntro = intro;
+				intro = true; // so initClass doesn't add items to hotbar.
+				initClass(i);
+				intro = oldIntro;
+			}
+		}
 	}
 	else if (!strncmp(command_str, "/gamepad_deadzone ", 18))
 	{
@@ -2063,7 +2253,7 @@ void consoleCommand(char const * const command_str)
 	else if ( !strncmp(command_str, "/reloadlimbs", 12) )
 	{
 		int x;
-		FILE* fp;
+		File* fp;
 		bool success = true;
 
 		if ( !autoLimbReload )
@@ -2093,14 +2283,14 @@ void consoleCommand(char const * const command_str)
 
 			// read file
 			int line;
-			for ( line = 1; feof(fp) == 0; line++ )
+			for ( line = 1; !fp->eof(); line++ )
 			{
 				char data[256];
 				int limb = 20;
 				int dummy;
 
 				// read line from file
-				fgets(data, 256, fp);
+				fp->gets(data, 256);
 
 				// skip blank and comment lines
 				if ( data[0] == '\n' || data[0] == '\r' || data[0] == '#' )
@@ -2126,7 +2316,7 @@ void consoleCommand(char const * const command_str)
 			}
 
 			// close file
-			fclose(fp);
+			FileIO::close(fp);
 		}
 		if ( success && !autoLimbReload )
 		{
@@ -2792,7 +2982,7 @@ void consoleCommand(char const * const command_str)
 		}
 		else if ( !strncmp(command_str, "/jsonexportfromcursor", 21) )
 		{
-			Entity* target = entityClicked(nullptr, true, clientnum);
+			Entity* target = entityClicked(nullptr, true, clientnum, EntityClickType::ENTITY_CLICK_USE);
 			if ( target )
 			{
 				Entity* parent = uidToEntity(target->skill[2]);
@@ -2806,6 +2996,9 @@ void consoleCommand(char const * const command_str)
 				}
 				monsterStatCustomManager.writeAllFromStats(target->getStats());
 			}
+		}
+		else if ( !strncmp(command_str, "/newui", 6) ) {
+			newui = !newui;
 		}
 		else if ( !strncmp(command_str, "/jsonexportgameplaymodifiers", 28) )
 		{
@@ -2821,6 +3014,7 @@ void consoleCommand(char const * const command_str)
 			EOS.CrossplayAccountManager.autologin = true;
 #endif // USE_EOS
 		}
+#if (defined SOUND)
 		else if ( !strncmp(command_str, "/sfxambientvolume", 17) )
 		{
 			sfxAmbientVolume = atoi(&command_str[18]);
@@ -2852,6 +3046,237 @@ void consoleCommand(char const * const command_str)
 		else if ( !strncmp(command_str, "/sfxenvironmentvolume", 21) )
 		{
 			sfxEnvironmentVolume = atoi(&command_str[22]);
+		}
+#endif
+		else if ( !strncmp(command_str, "/cyclekeyboard", 14) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.bPlayerUsingKeyboardControl(i) )
+				{
+					if ( i + 1 >= MAXPLAYERS )
+					{
+						inputs.setPlayerIDAllowedKeyboard(0);
+						messagePlayer(clientnum, "Keyboard controlled by player %d", 0);
+					}
+					else
+					{
+						inputs.setPlayerIDAllowedKeyboard(i + 1);
+						messagePlayer(clientnum, "Keyboard controlled by player %d", i + 1);
+					}
+					break;
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/cyclegamepad", 13) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.hasController(i) )
+				{
+					int id = inputs.getControllerID(i);
+					inputs.removeControllerWithDeviceID(id);
+					if ( i + 1 >= MAXPLAYERS )
+					{
+						inputs.setControllerID(0, id);
+					}
+					else
+					{
+						inputs.setControllerID(i + 1, id);
+					}
+					break;
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/cycledeadzoneleft", 18) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.hasController(i) )
+				{
+					switch ( inputs.getController(i)->leftStickDeadzoneType )
+					{
+						case GameController::DEADZONE_PER_AXIS:
+							inputs.getController(i)->leftStickDeadzoneType = GameController::DEADZONE_MAGNITUDE_LINEAR;
+							messagePlayer(i, "Using radial deadzone on left stick.");
+							break;
+						case GameController::DEADZONE_MAGNITUDE_LINEAR:
+							inputs.getController(i)->leftStickDeadzoneType = GameController::DEADZONE_MAGNITUDE_HALFPIPE;
+							messagePlayer(i, "Using curved radial deadzone on left stick.");
+							break;
+						case GameController::DEADZONE_MAGNITUDE_HALFPIPE:
+							inputs.getController(i)->leftStickDeadzoneType = GameController::DEADZONE_PER_AXIS;
+							messagePlayer(i, "Using per-axis deadzone on left stick.");
+							break;
+					}
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/cycledeadzoneright", 19) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.hasController(i) )
+				{
+					switch ( inputs.getController(i)->rightStickDeadzoneType )
+					{
+						case GameController::DEADZONE_PER_AXIS:
+							inputs.getController(i)->rightStickDeadzoneType = GameController::DEADZONE_MAGNITUDE_LINEAR;
+							messagePlayer(i, "Using radial deadzone on right stick.");
+							break;
+						case GameController::DEADZONE_MAGNITUDE_LINEAR:
+							inputs.getController(i)->rightStickDeadzoneType = GameController::DEADZONE_MAGNITUDE_HALFPIPE;
+							messagePlayer(i, "Using curved radial deadzone on right stick.");
+							break;
+						case GameController::DEADZONE_MAGNITUDE_HALFPIPE:
+							inputs.getController(i)->rightStickDeadzoneType = GameController::DEADZONE_PER_AXIS;
+							messagePlayer(i, "Using per-axis deadzone on right stick.");
+							break;
+					}
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/vibration", 10) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.hasController(i) )
+				{
+					inputs.getController(i)->haptics.vibrationEnabled = !inputs.getController(i)->haptics.vibrationEnabled;
+					if ( inputs.getController(i)->haptics.vibrationEnabled )
+					{
+						messagePlayer(i, "Controller vibration is enabled.");
+					}
+					else
+					{
+						messagePlayer(i, "Controller vibration is disabled.");
+					}
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/tooltipoffset ", 15) )
+		{
+			int offset = atoi((char*)(command_str + 15));
+			Player::WorldUI_t::tooltipHeightOffsetZ = static_cast<real_t>(offset) / 10.0;
+			messagePlayer(clientnum, "Tooltip Z offset set to: %.1f", Player::WorldUI_t::tooltipHeightOffsetZ);
+		}
+		else if ( !strncmp(command_str, "/radialhotbar", 13) )
+		{
+			players[clientnum]->hotbar.useHotbarRadialMenu = !players[clientnum]->hotbar.useHotbarRadialMenu;
+		}
+		else if ( !strncmp(command_str, "/radialhotslots ", 16) )
+		{
+			int slots = atoi((char*)(command_str + 16));
+			players[clientnum]->hotbar.radialHotbarSlots = slots;
+			messagePlayer(clientnum, "Slots in use: %d", slots);
+		}
+		else if ( !strncmp(command_str, "/facehotbar", 11) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.bPlayerUsingKeyboardControl(i) )
+				{
+					players[i]->hotbar.useHotbarFaceMenu = !players[i]->hotbar.useHotbarFaceMenu;
+					messagePlayer(i, "Face button hotbar: %d", players[i]->hotbar.useHotbarFaceMenu ? 1 : 0);
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/facebarinvert", 14) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.bPlayerUsingKeyboardControl(i) )
+				{
+					players[i]->hotbar.faceMenuInvertLayout = !players[i]->hotbar.faceMenuInvertLayout;
+					messagePlayer(i, "Face button invert position: %d", players[i]->hotbar.faceMenuInvertLayout ? 1 : 0);
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/facebarquickcast", 17) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.bPlayerUsingKeyboardControl(i) )
+				{
+					players[i]->hotbar.faceMenuQuickCastEnabled = !players[i]->hotbar.faceMenuQuickCastEnabled;
+					messagePlayer(i, "Face button quickcast: %d", players[i]->hotbar.faceMenuQuickCastEnabled ? 1 : 0);
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/paperdoll", 10) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.bPlayerUsingKeyboardControl(i) )
+				{
+					players[i]->paperDoll.enabled = !players[i]->paperDoll.enabled;
+					messagePlayer(i, "Paper doll: %d", players[i]->paperDoll.enabled ? 1 : 0);
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/facebaralternate", 17) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.bPlayerUsingKeyboardControl(i) )
+				{
+					players[i]->hotbar.faceMenuAlternateLayout = !players[i]->hotbar.faceMenuAlternateLayout;
+					messagePlayer(i, "Face button alternate: %d", players[i]->hotbar.faceMenuAlternateLayout ? 1 : 0);
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/inventorynew", 13) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.bPlayerUsingKeyboardControl(i) )
+				{
+					players[i]->inventoryUI.bNewInventoryLayout = !players[i]->inventoryUI.bNewInventoryLayout;
+					players[i]->inventoryUI.resetInventory();
+					messagePlayer(i, "New Inventory layout: %d", players[i]->inventoryUI.bNewInventoryLayout ? 1 : 0);
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/worldui", 8) )
+		{
+			for ( int i = 0; i < MAXPLAYERS; ++i )
+			{
+				if ( inputs.bPlayerUsingKeyboardControl(i) )
+				{
+					if ( players[i]->worldUI.isEnabled() )
+					{
+						players[i]->worldUI.disable();
+					}
+					else
+					{
+						players[i]->worldUI.enable();
+					}
+				}
+			}
+		}
+		else if ( !strncmp(command_str, "/ircconnect", 11) )
+		{
+			if ( IRCHandler.connect() )
+			{
+				messagePlayer(clientnum, "[IRC]: Connected.");
+			}
+			else
+			{
+				IRCHandler.disconnect();
+				messagePlayer(clientnum, "[IRC]: Error connecting.");
+			}
+		}
+		else if ( !strncmp(command_str, "/ircdisconnect", 14) )
+		{
+			IRCHandler.disconnect();
+			messagePlayer(clientnum, "[IRC]: Disconnected.");
+		}
+		else if ( !strncmp(command_str, "/irc ", 5) )
+		{
+			std::string message = command_str + 5;
+			message.append("\r\n");
+			IRCHandler.packetSend(message);
+			messagePlayer(clientnum, "[IRC]: Sent message.");
 		}
 		else
 		{

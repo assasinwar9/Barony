@@ -170,12 +170,17 @@ void actSwitch(Entity* my)
 	//So then when that second switch's actSwitch() comes up, and if it's on, it'll repower the entire network -- which will stay powered until ALL connected switches go off.
 	my->flags[PASSABLE] = true; // these should ALWAYS be passable. No exceptions
 
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
+
 	if ( multiplayer != CLIENT )
 	{
 		int i = 0;
 		for (i = 0; i < MAXPLAYERS; ++i)
 		{
-			if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+			if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 			{
 				if (inrange[i])   //Act on it only if the player (or monster, if/when this is changed to support monster interaction?) is in range.
 				{
@@ -241,12 +246,17 @@ void actSwitchWithTimer(Entity* my)
 {
 	my->flags[PASSABLE] = true; // these should ALWAYS be passable. No exceptions
 
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
+
 	if ( multiplayer != CLIENT )
 	{
 		int i = 0;
 		for ( i = 0; i < MAXPLAYERS; ++i )
 		{
-			if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+			if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 			{
 				// server/client has clicked on the entity.
 				if ( inrange[i] )   //Act on it only if the player (or monster, if/when this is changed to support monster interaction?) is in range.

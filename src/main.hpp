@@ -22,6 +22,7 @@ typedef double real_t;
 #include <list>
 #include <string>
 #include <vector>
+#include <array>
 //using namespace std; //For C++ strings //This breaks messages on certain systems, due to template<class _CharT> class std::__cxx11::messages
 using std::string; //Instead of including an entire namespace, please explicitly include only the parts you need, and check for conflicts as reasonably possible.
 #include <map>
@@ -29,8 +30,12 @@ using std::string; //Instead of including an entire namespace, please explicitly
 #include <unordered_set>
 #include <set>
 #include <functional>
-#include "Config.hpp"
 #include "physfs.h"
+#include "Config.hpp"
+
+#ifdef NINTENDO
+#include "nintendo/baronynx.hpp"
+#endif
 
 #ifdef STEAMWORKS
 #define STEAM_APPID 371970
@@ -86,27 +91,37 @@ extern bool autoLimbReload;
 #include <ctype.h>
 #ifdef WINDOWS
 #define GL_GLEXT_PROTOTYPES
+#ifdef PATH_MAX
+// replace with our own
+#undef PATH_MAX
+#endif
 #define PATH_MAX 1024
 #include <windows.h>
+#pragma warning ( push )
+#pragma warning( disable : 4091 ) // disable typedef warnings from dbghelp.h
 #include <Dbghelp.h>
+#pragma warning( pop )
 #undef min
 #undef max
 #endif
+
 #ifdef APPLE
-#include <Cocoa/Cocoa.h>
-//#include <OpenGL/OpenGL.h>
-#define GL_GLEXT_PROTOTYPES
-#include <GLUT/glut.h>
-#include <OpenGL/gl3ext.h>
-#include <OpenGL/gl3.h>
-#include <SDL2/SDL_opengl.h>
-#else
-#define GL_GLEXT_PROTOTYPES
-#include <GL/gl.h>
-#include <GL/glu.h>
-#include <GL/glext.h>
-#include "SDL_opengl.h"
-#endif
+ #include <Cocoa/Cocoa.h>
+ //#include <OpenGL/OpenGL.h>
+ #define GL_GLEXT_PROTOTYPES
+ #include <OpenGL/gl3ext.h>
+ #include <OpenGL/gl3.h>
+ #include <SDL2/SDL_opengl.h>
+#else // APPLE
+ #ifndef NINTENDO
+  #define GL_GLEXT_PROTOTYPES
+  #include <GL/gl.h>
+  #include <GL/glu.h>
+ #endif
+ #include <GL/glext.h>
+ #include "SDL_opengl.h"
+#endif // !APPLE
+
 #ifdef APPLE
 #include <SDL2/SDL.h>
 #else
@@ -116,15 +131,18 @@ extern bool autoLimbReload;
 #include "SDL_syswm.h"
 #endif
 #ifdef APPLE
-#include <SDL2_image/SDL_image.h>
-#else
-#include "SDL_image.h"
-#endif
-//#include "SDL_mixer.h"
+ #include <SDL2_image/SDL_image.h>
+#else // APPLE
+ #ifndef NINTENDO
+  #include "SDL_image.h"
+ #endif // NINTENDO
+#endif // !APPLE
 #ifdef APPLE
 #include <SDL2_net/SDL_net.h>
 #else
+#ifndef NINTENDO
 #include "SDL_net.h"
+#endif
 #endif
 #ifdef APPLE
 #include <SDL2_ttf/SDL_ttf.h>
@@ -139,7 +157,7 @@ extern bool autoLimbReload;
 //#include <steamworks_cwrapper/steam_wrapper.h>
 #endif
 
-#ifdef _MSC_VER
+#ifdef WINDOWS
 #include <io.h>
 #define F_OK 0	// check for existence
 #define X_OK 1	// check for execute permission
@@ -354,6 +372,7 @@ typedef struct map_t
 	std::unordered_map<Sint32, node_t*> entities_map;
 	list_t* entities;
 	list_t* creatures; //A list of Entity* pointers.
+	list_t* worldUI; //A list of Entity* pointers.
 } map_t;
 
 #define MAPLAYERS 3 // number of layers contained in a single map
@@ -506,8 +525,9 @@ typedef struct door_t
 #define CLIPFAR 1024
 #define TEXTURESIZE 32
 #define TEXTUREPOWER 5 // power of 2 that texture size is, ie pow(2,TEXTUREPOWER) = TEXTURESIZE
+#ifndef BARONY_SUPER_MULTIPLAYER
 #define MAXPLAYERS 4
-#ifdef BARONY_SUPER_MULTIPLAYER
+#else
 #define MAXPLAYERS 16
 #endif
 
@@ -522,7 +542,6 @@ extern cameravars_t cameravars[MAXPLAYERS];
 
 extern int game;
 extern bool loading;
-extern SDL_TimerID timer;
 extern SDL_Window* screen;
 #ifdef APPLE
 extern SDL_Renderer* renderer;
@@ -552,10 +571,10 @@ extern int lastCreatedCharacterRace;
 static const unsigned NUM_MOUSE_STATUS = 6;
 extern Sint8 mousestatus[NUM_MOUSE_STATUS];
 //extern Sint8 omousestatus[NUM_MOUSE_STATUS];
-const int NUM_JOY_STATUS = 32;
-extern Sint8 joystatus[NUM_JOY_STATUS];
-const int NUM_JOY_TRIGGER_STATUS = 2;
-extern Sint8 joy_trigger_status[NUM_JOY_TRIGGER_STATUS]; //0 = left, 1 = right.
+const int NUM_JOY_STATUS = SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_MAX;
+//extern Sint8 joystatus[NUM_JOY_STATUS];
+const int NUM_JOY_AXIS_STATUS = SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_MAX;
+//extern Sint8 joy_trigger_status[NUM_JOY_TRIGGER_STATUS]; //0 = left, 1 = right.
 extern Uint32 cursorflash;
 extern Sint32 camx, camy;
 extern Sint32 newcamx, newcamy;
@@ -575,6 +594,11 @@ extern int minimapScale;
 extern int minimapObjectZoom;
 extern int minimapScaleQuickToggle;
 extern bool softwaremode;
+#ifdef NINTENDO
+ extern std::chrono::time_point<std::chrono::steady_clock> lastTick;
+#else
+ extern SDL_TimerID timer;
+#endif // NINTENDO
 extern real_t* zbuffer;
 extern Sint32* lightmap;
 extern Sint32* lightmapSmoothed;
@@ -595,7 +619,7 @@ extern int minotaurlevel;
 #define SERVERCROSSPLAY 5
 
 // language stuff
-#define NUMLANGENTRIES 4000
+#define NUMLANGENTRIES 4050
 extern char languageCode[32];
 extern char** language;
 
@@ -723,6 +747,7 @@ node_t* list_Node(list_t* list, int index);
 void defaultDeconstructor(void* data);
 void emptyDeconstructor(void* data);
 void entityDeconstructor(void* data);
+void statDeconstructor(void* data);
 void lightDeconstructor(void* data);
 void mapDeconstructor(void* data);
 void stringDeconstructor(void* data);
@@ -738,6 +763,7 @@ pathnode_t* newPathnode(list_t* list, Sint32 x, Sint32 y, pathnode_t* parent, Si
 real_t getLightForEntity(real_t x, real_t y);
 void glDrawVoxel(view_t* camera, Entity* entity, int mode);
 void glDrawSprite(view_t* camera, Entity* entity, int mode);
+void glDrawWorldUISprite(view_t* camera, Entity* entity, int mode);
 void glDrawSpriteFromImage(view_t* camera, Entity* entity, std::string text, int mode);
 real_t getLightAt(int x, int y);
 void glDrawWorld(view_t* camera, int mode);
@@ -761,11 +787,11 @@ extern bool no_sound; //False means sound initialized properly. True means sound
 extern bool initialized; //So that messagePlayer doesn't explode before the game is initialized. //TODO: Does the editor need this set too and stuff?
 
 #ifdef PANDORA
-// Pandora: FBO variables
-extern GLuint fbo_fbo;
-extern GLuint fbo_tex;
-extern GLuint fbo_ren;
-#endif
+ // Pandora: FBO variables
+ extern GLuint fbo_fbo;
+ extern GLuint fbo_tex;
+ extern GLuint fbo_ren;
+#endif // PANDORA
 void GO_SwapBuffers(SDL_Window* screen);
 unsigned int GO_GetPixelU32(int x, int y, view_t& camera);
 
@@ -775,13 +801,18 @@ static const int NUM_GLOBAL_STEAM_STATISTICS = 66;
 extern SteamStat_t g_SteamGlobalStats[NUM_GLOBAL_STEAM_STATISTICS];
 
 #ifdef STEAMWORKS
-#include <steam/steam_api.h>
-#include "steam.hpp"
-extern CSteamLeaderboards* g_SteamLeaderboards;
-extern CSteamWorkshop* g_SteamWorkshop;
-extern CSteamStatistics* g_SteamStatistics;
+ #include <steam/steam_api.h>
+ #include "steam.hpp"
+ extern CSteamLeaderboards* g_SteamLeaderboards;
+ extern CSteamWorkshop* g_SteamWorkshop;
+ extern CSteamStatistics* g_SteamStatistics;
 #endif // STEAMWORKS
 
 #ifdef USE_EOS
-#include "eos.hpp"
-#endif
+ #include "eos.hpp"
+#endif // USE_EOS
+
+#ifndef NINTENDO
+ #define getSizeOfText(A, B, C, D) TTF_SizeUTF8(A, B, C, D)
+ #define getHeightOfFont(A) TTF_FontHeight(A)
+#endif // NINTENDO

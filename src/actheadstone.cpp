@@ -79,11 +79,17 @@ void actHeadstone(Entity* my)
 
 	if ( multiplayer == CLIENT )
 	{
+		if ( !HEADSTONE_INIT )
+		{
+			HEADSTONE_INIT = 1;
+			my->createWorldUITooltip();
+		}
 		return;
 	}
 
 	if ( !HEADSTONE_INIT )
 	{
+		my->createWorldUITooltip();
 		HEADSTONE_INIT = 1;
 		HEADSTONE_MESSAGE = rand();
 		HEADSTONE_GHOUL = (rand() % 4 == 0);
@@ -97,7 +103,7 @@ void actHeadstone(Entity* my)
 	{
 		for (i = 0; i < MAXPLAYERS; i++)
 		{
-			if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+			if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 			{
 				if (inrange[i])
 				{

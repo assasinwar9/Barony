@@ -42,6 +42,11 @@ void actLadder(Entity* my)
 	double dist;
 	int i, c;
 
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
+
 	LADDER_AMBIENCE--;
 	if (LADDER_AMBIENCE <= 0)
 	{
@@ -54,7 +59,7 @@ void actLadder(Entity* my)
 	{
 		for (i = 0; i < MAXPLAYERS; i++)
 		{
-			if ((i == 0 && selectedEntity == my) || (client_selected[i] == my))
+			if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 			{
 				if (inrange[i])
 				{
@@ -119,13 +124,17 @@ void actLadderUp(Entity* my)
 		LADDER_AMBIENCE = TICKS_PER_SECOND * 30;
 		playSoundEntityLocal( my, 149, 64 );
 	}*/
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
 
 	// use ladder
 	if ( multiplayer != CLIENT )
 	{
 		for (int i = 0; i < MAXPLAYERS; i++)
 		{
-			if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+			if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 			{
 				if (inrange[i])
 				{
@@ -145,6 +154,7 @@ void actPortal(Entity* my)
 
 	if ( !my->portalInit )
 	{
+		my->createWorldUITooltip();
 		my->portalInit = 1;
 		my->light = lightSphereShadow(my->x / 16, my->y / 16, 3, 255);
 		if ( !strncmp(map.name, "Cockatrice Lair", 15) )
@@ -232,7 +242,7 @@ void actPortal(Entity* my)
 			{
 				entity = (Entity*)node->element;
 				node = node->next;
-				if ( entity->behavior == &actMagicTrap )
+				if ( entity && entity->behavior == &actMagicTrap )
 				{
 					list_RemoveNode(entity->mynode);
 				}
@@ -245,7 +255,7 @@ void actPortal(Entity* my)
 	// step through portal
 	for (i = 0; i < MAXPLAYERS; i++)
 	{
-		if ((i == 0 && selectedEntity == my) || (client_selected[i] == my))
+		if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 		{
 			if (inrange[i])
 			{
@@ -352,6 +362,11 @@ void actWinningPortal(Entity* my)
 	double dist;
 	int i, c;
 
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
+
 	if ( multiplayer != CLIENT )
 	{
 		if ( my->flags[INVISIBLE] )
@@ -441,7 +456,7 @@ void actWinningPortal(Entity* my)
 	// step through portal
 	for (i = 0; i < MAXPLAYERS; i++)
 	{
-		if ((i == 0 && selectedEntity == my) || (client_selected[i] == my))
+		if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 		{
 			if (inrange[i])
 			{
@@ -507,6 +522,11 @@ void Entity::actExpansionEndGamePortal()
 	int playercount = 0;
 	double dist;
 	int i, c;
+
+	if ( this->ticks == 1 )
+	{
+		this->createWorldUITooltip();
+	}
 
 	if ( multiplayer != CLIENT )
 	{
@@ -581,7 +601,7 @@ void Entity::actExpansionEndGamePortal()
 	// step through portal
 	for ( i = 0; i < MAXPLAYERS; i++ )
 	{
-		if ( (i == 0 && selectedEntity == this) || (client_selected[i] == this) )
+		if ( (i == 0 && selectedEntity[0] == this) || (client_selected[i] == this) || (splitscreen && selectedEntity[i] == this) )
 		{
 			if ( inrange[i] )
 			{
@@ -647,6 +667,11 @@ void Entity::actMidGamePortal()
 	int playercount = 0;
 	double dist;
 	int i, c;
+
+	if ( this->ticks == 1 )
+	{
+		this->createWorldUITooltip();
+	}
 
 	if ( multiplayer != CLIENT )
 	{
@@ -740,7 +765,7 @@ void Entity::actMidGamePortal()
 	// step through portal
 	for ( i = 0; i < MAXPLAYERS; i++ )
 	{
-		if ( (i == 0 && selectedEntity == this) || (client_selected[i] == this) )
+		if ( (i == 0 && selectedEntity[0] == this) || (client_selected[i] == this) || (splitscreen && selectedEntity[i] == this) )
 		{
 			if ( inrange[i] )
 			{
@@ -1002,6 +1027,11 @@ void actCustomPortal(Entity* my)
 	double dist;
 	int i, c;
 
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
+
 	if ( multiplayer != CLIENT )
 	{
 		if ( my->flags[INVISIBLE] )
@@ -1074,7 +1104,7 @@ void actCustomPortal(Entity* my)
 	// step through portal
 	for ( i = 0; i < MAXPLAYERS; i++ )
 	{
-		if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+		if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 		{
 			if ( inrange[i] )
 			{

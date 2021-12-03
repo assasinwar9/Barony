@@ -564,9 +564,13 @@ void SteamServerClientWrapper::OnGameOverlayActivated(GameOverlayActivated_t* ca
 	}
 	else
 	{
-		if (shootmode && !gamePaused)
+		for ( int i = 0; i < MAXPLAYERS; ++i )
 		{
-			SDL_SetRelativeMouseMode(SDL_TRUE); //Recapture mouse.
+			if ( players[i]->isLocalPlayer() && inputs.bPlayerUsingKeyboardControl(i) 
+				&& players[i]->shootmode && !gamePaused)
+			{
+				SDL_SetRelativeMouseMode(SDL_TRUE); //Recapture mouse.
+			}
 		}
 		SDL_ShowCursor(SDL_FALSE);
 	}
@@ -1937,7 +1941,7 @@ void CSteamLeaderboards::FindLeaderboard(const char *pchLeaderboardName)
 	{
 		return;
 	}
-	m_CurrentLeaderboard = NULL;
+	m_CurrentLeaderboard = 0;
 	b_LeaderboardInit = false;
 	SteamAPICall_t hSteamAPICall = SteamUserStats()->FindLeaderboard(pchLeaderboardName);
 	m_callResultFindLeaderboard.Set(hSteamAPICall, this,

@@ -31,6 +31,11 @@ void actGoldBag(Entity* my)
 {
 	int i;
 
+	if ( my->ticks == 1 )
+	{
+		my->createWorldUITooltip();
+	}
+
 	if ( my->flags[INVISIBLE] && my->goldSokoban == 1 )
 	{
 		if ( multiplayer != CLIENT )
@@ -72,7 +77,7 @@ void actGoldBag(Entity* my)
 	{
 		for (i = 0; i < MAXPLAYERS; i++)
 		{
-			if ( (i == 0 && selectedEntity == my) || (client_selected[i] == my) )
+			if ( (i == 0 && selectedEntity[0] == my) || (client_selected[i] == my) || (splitscreen && selectedEntity[i] == my) )
 			{
 				if (inrange[i])
 				{

@@ -30,7 +30,6 @@ const int BOSS_GHARBAD = 1;
 
 void initGoatman(Entity* my, Stat* myStats)
 {
-	int c;
 	node_t* node;
 	int boss = 0;
 
@@ -1417,7 +1416,7 @@ void Entity::goatmanChooseWeapon(const Entity* target, double dist)
 						bool swapped = swapMonsterWeaponWithInventoryItem(this, myStats, hasPotion, false, false);
 						if ( !swapped )
 						{
-							printlog("Error in Entity::goatmanChooseWeapon(): failed to swap healing potion into hand!");
+							//printlog("Error in Entity::goatmanChooseWeapon(): failed to swap healing potion into hand!");
 							//Don't return, want to try equipping either a potion of booze, or one of the other weapon routes (e.h. a THROWN special if in melee or just an axe if worst comes to worst).
 						}
 						else
@@ -1434,7 +1433,7 @@ void Entity::goatmanChooseWeapon(const Entity* target, double dist)
 					bool swapped = swapMonsterWeaponWithInventoryItem(this, myStats, hasPotion, false, false);
 					if ( !swapped )
 					{
-						printlog("Error in Entity::goatmanChooseWeapon(): failed to swap healing potion into hand!");
+						//printlog("Error in Entity::goatmanChooseWeapon(): failed to swap healing potion into hand!");
 						//Don't return, want to try equipping either a potion of booze, or one of the other weapon routes (e.h. a THROWN special if in melee or just an axe if worst comes to worst).
 					}
 					else
@@ -1456,7 +1455,7 @@ void Entity::goatmanChooseWeapon(const Entity* target, double dist)
 					bool swapped = swapMonsterWeaponWithInventoryItem(this, myStats, hasPotion, false, false);
 					if ( !swapped )
 					{
-						printlog("Error in Entity::goatmanChooseWeapon(): failed to swap healing potion into hand!");
+						//printlog("Error in Entity::goatmanChooseWeapon(): failed to swap healing potion into hand!");
 						//Don't return, want to try equipping either a potion of booze, or one of the other weapon routes (e.h. a THROWN special if in melee or just an axe if worst comes to worst).
 					}
 					else
@@ -1491,7 +1490,7 @@ void Entity::goatmanChooseWeapon(const Entity* target, double dist)
 					bool swapped = swapMonsterWeaponWithInventoryItem(this, myStats, thrownNode, false, false);
 					if ( !swapped )
 					{
-						printlog("Error in Entity::goatmanChooseWeapon(): failed to swap THROWN into hand! Cursed? (%d)", myStats->weapon->beatitude);
+						//printlog("Error in Entity::goatmanChooseWeapon(): failed to swap THROWN into hand! Cursed? (%d)", myStats->weapon->beatitude);
 						//Don't return, make sure holding a melee weapon at least.
 					}
 					else
@@ -1519,7 +1518,7 @@ void Entity::goatmanChooseWeapon(const Entity* target, double dist)
 			bool swapped = swapMonsterWeaponWithInventoryItem(this, myStats, weaponNode, false, false);
 			if ( !swapped )
 			{
-				printlog("Error in Entity::goatmanChooseWeapon(): failed to swap melee weapon into hand! Cursed? (%d)", myStats->weapon->beatitude);
+				//printlog("Error in Entity::goatmanChooseWeapon(): failed to swap melee weapon into hand! Cursed? (%d)", myStats->weapon->beatitude);
 				//Don't return so that monsters will at least equip ranged weapons in melee range if they don't have anything else.
 			}
 			else

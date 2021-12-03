@@ -29,8 +29,8 @@
 
 //#include "player.hpp"
 
-Entity* selectedEntity = nullptr;
-Entity* lastSelectedEntity = nullptr;
+Entity* selectedEntity[MAXPLAYERS] = { nullptr };
+Entity* lastSelectedEntity[MAXPLAYERS] = { nullptr };
 Sint32 mousex = 0, mousey = 0;
 Sint32 omousex = 0, omousey = 0;
 Sint32 mousexrel = 0, mouseyrel = 0;
@@ -62,9 +62,17 @@ void AchievementObserver::updateGlobalStat(int index, int value) {}
 std::vector<std::pair<SDL_Surface**, std::string>> systemResourceImages; // dummy variable for files.cpp system resource reloading in Barony.
 void initMenuOptions() {} // dummy
 int textInsertCaratPosition = -1;
-GenericGUIMenu GenericGUI;
-Item* selectedItem = nullptr; //Because it won't compile without this.
+GenericGUIMenu GenericGUI[MAXPLAYERS];
 
+void actGib(Entity* my) {} // dummy for draw.cpp
+void actHudArm(Entity* my) {} // dummy for draw.cpp
+void actHudWeapon(Entity* my) {} // dummy for draw.cpp
+void actHudShield(Entity* my) {} // dummy for draw.cpp
+void actHudAdditional(Entity* my) {} // dummy for draw.cpp
+void actHudArrowModel(Entity* my) {} // dummy for draw.cpp
+void actLeftHandMagic(Entity* my) {} // dummy for draw.cpp
+void actRightHandMagic(Entity* my) {} // dummy for draw.cpp
+void messagePlayer(int player, char const * const message, ...) {} // dummy
 map_t copymap;
 
 int errorMessage = 0;
@@ -1024,6 +1032,7 @@ void makeUndo()
 	undomap->entities->first = nullptr;
 	undomap->entities->last = nullptr;
 	undomap->creatures = nullptr;
+	undomap->worldUI = nullptr;
 	for ( node = map.entities->first; node != nullptr; node = node->next )
 	{
 		Entity* entity = newEntity(((Entity*)node->element)->sprite, 1, undomap->entities, nullptr);
@@ -1065,7 +1074,7 @@ void undo()
 	{
 		return;
 	}
-	selectedEntity = NULL;
+	selectedEntity[0] = NULL;
 	if ( undospot == undolist.last )
 	{
 		node_t* tempnode = undospot;
@@ -1104,7 +1113,7 @@ void redo()
 	{
 		return;
 	}
-	selectedEntity = NULL;
+	selectedEntity[0] = NULL;
 	free(map.tiles);
 	map_t* undomap = (map_t*)redospot->element;
 	map.width = undomap->width;
@@ -1169,7 +1178,7 @@ loads the tile palette file for the editor.
 int loadTilePalettes()
 {
 	char filename[128] = { 0 };
-	FILE* fp;
+	File* fp;
 	int c;
 
 	// open log file
@@ -1200,7 +1209,7 @@ int loadTilePalettes()
 	int paletteNumber = 0;
 	int paletteTile = 0;
 	bool lockValueEntry = 0;
-	for (; !feof(fp); )
+	for (; !(fp->eof()); )
 	{
 		//printlog( "loading line %d...\n", line);
 		char data[1024];
@@ -1210,8 +1219,8 @@ int loadTilePalettes()
 		bool fileEnd = false;
 		for ( i = 0; ; i++ )
 		{
-			data[i] = fgetc(fp);
-			if ( feof(fp) )
+			data[i] = fp->getc();
+			if ( fp->eof() )
 			{
 				fileEnd = true;
 				break;
@@ -1257,7 +1266,7 @@ int loadTilePalettes()
 	}
 
 	// close file
-	fclose(fp);
+	FileIO::close(fp);
 	printlog("successfully loaded tile palette file '%s'\n", filename);
 	return 0;
 }
@@ -1273,7 +1282,7 @@ saves the tile palette file for the editor.
 int saveTilePalettes()
 {
 	char filename[128] = { 0 };
-	FILE* fp;
+	File* fp;
 	int c;
 
 	// open log file
@@ -1306,39 +1315,39 @@ int saveTilePalettes()
 	bool lockValueEntry = 0;
 	char data[128];
 
-	fputs("# Tile palette file\n", fp);
-	fputs("# lines beginning with pound character are a comment\n", fp);
-	fputs("# blank lines are ignored\n", fp);
-	fputs("", fp);
+	fp->puts("# Tile palette file\n");
+	fp->puts("# lines beginning with pound character are a comment\n");
+	fp->puts("# blank lines are ignored\n");
+	fp->puts("");
 
 	for ( paletteNumber = 0; paletteNumber < 9; paletteNumber++ )
 	{
 		paletteTile = 0;
 		snprintf(data, sizeof(data), "# palette %d tiles\n", paletteNumber + 1);
-		fputs(data, fp);
-		fputs("\n", fp);
+		fp->puts(data);
+		fp->puts("\n");
 		for ( paletteTile = 0; paletteTile < 9; paletteTile++ )
 		{
 			if ( paletteTile == 3 || paletteTile == 6 )
 			{
-				fputs("\n", fp);
+				fp->puts("\n");
 			}
 			snprintf(data, sizeof(data), "%d\n", recentUsedTiles[paletteNumber][paletteTile]);
-			fputs(data, fp);
+			fp->puts(data);
 		}
-		fputs("\n", fp);
+		fp->puts("\n");
 		snprintf(data, sizeof(data), "# palette %d locked (1) or unlocked (0)\n", paletteNumber + 1);
-		fputs(data, fp);
-		fputs("\n", fp);
+		fp->puts(data);
+		fp->puts("\n");
 		snprintf(data, sizeof(data), "%d\n", lockTilePalette[paletteNumber]);
-		fputs(data, fp);
-		fputs("\n", fp);
+		fp->puts(data);
+		fp->puts("\n");
 	}
 
-	fputs("# end\n", fp);
+	fp->puts("# end\n");
 
 	// close file
-	fclose(fp);
+	FileIO::close(fp);
 	printlog("saved tile palette file '%s'\n", filename);
 	return 0;
 }
@@ -1507,6 +1516,7 @@ int main(int argc, char** argv)
 	copymap.tiles = nullptr;
 	copymap.entities = nullptr;
 	copymap.creatures = nullptr;
+	copymap.worldUI = nullptr;
 	undolist.first = nullptr;
 	undolist.last = nullptr;
 
@@ -1527,6 +1537,7 @@ int main(int argc, char** argv)
 	map.height = 24;
 	map.entities = (list_t*) malloc(sizeof(list_t));
 	map.creatures = nullptr;
+	map.worldUI = nullptr;
 	map.entities->first = nullptr;
 	map.entities->last = nullptr;
 	map.tiles = (int*) malloc(sizeof(int) * map.width * map.height * MAPLAYERS);
@@ -2078,21 +2089,21 @@ int main(int argc, char** argv)
 					{
 						nextnode = node->next;
 						entity = (Entity*)node->element;
-						if ( entity == selectedEntity )
+						if ( entity == selectedEntity[0] )
 						{
 							if ( mousestatus[SDL_BUTTON_LEFT] )
 							{
 								if ( newwindow == 0 )
 								{
 									// if the entity moved from where it was picked up, or if the sprite was right click duplicated, store an undo.
-									if ( selectedEntity->x / 16 != prev_x || selectedEntity->y / 16 != prev_y || duplicatedSprite )
+									if ( selectedEntity[0]->x / 16 != prev_x || selectedEntity[0]->y / 16 != prev_y || duplicatedSprite )
 									{
 										duplicatedSprite = false;
 										makeUndo();
 									}
 								}
 								mousestatus[SDL_BUTTON_LEFT] = 0;
-								selectedEntity = NULL;
+								selectedEntity[0] = NULL;
 								break;
 							}
 							else if ( mousestatus[SDL_BUTTON_RIGHT] )
@@ -2106,11 +2117,11 @@ int main(int argc, char** argv)
 									}
 									duplicatedSprite = true;
 								}
-								selectedEntity = newEntity(entity->sprite, 0, map.entities, nullptr);
+								selectedEntity[0] = newEntity(entity->sprite, 0, map.entities, nullptr);
 								
-								setSpriteAttributes(selectedEntity, entity, lastSelectedEntity);
+								setSpriteAttributes(selectedEntity[0], entity, lastSelectedEntity[0]);
 
-								lastSelectedEntity = selectedEntity;
+								lastSelectedEntity[0] = selectedEntity[0];
 
 								mousestatus[SDL_BUTTON_RIGHT] = 0;
 								break;
@@ -2125,12 +2136,12 @@ int main(int argc, char** argv)
 								if ( mousestatus[SDL_BUTTON_LEFT] && selectedTool == 1 )
 								{
 									// select sprite
-									selectedEntity = entity;
-									lastSelectedEntity = selectedEntity;
+									selectedEntity[0] = entity;
+									lastSelectedEntity[0] = selectedEntity[0];
 									prev_x = entity->x / 16;
 									prev_y = entity->y / 16;
 									mousestatus[SDL_BUTTON_LEFT] = 0;
-									if ( newwindow == 0 && selectedEntity != NULL )
+									if ( newwindow == 0 && selectedEntity[0] != NULL )
 									{
 										makeUndo();
 									}
@@ -2143,10 +2154,10 @@ int main(int argc, char** argv)
 									{
 										makeUndo();
 									}
-									selectedEntity = newEntity(entity->sprite, 0, map.entities, nullptr);
-									lastSelectedEntity = selectedEntity;
+									selectedEntity[0] = newEntity(entity->sprite, 0, map.entities, nullptr);
+									lastSelectedEntity[0] = selectedEntity[0];
 
-									setSpriteAttributes(selectedEntity, entity, entity);
+									setSpriteAttributes(selectedEntity[0], entity, entity);
 
 									mousestatus[SDL_BUTTON_RIGHT] = 0;
 								}
@@ -2156,7 +2167,7 @@ int main(int argc, char** argv)
 				}
 
 				// Modify World
-				if ( mousestatus[SDL_BUTTON_LEFT] && selectedEntity == NULL )
+				if ( mousestatus[SDL_BUTTON_LEFT] && selectedEntity[0] == NULL )
 				{
 					if ( allowediting )
 					{
@@ -2277,7 +2288,7 @@ int main(int argc, char** argv)
 					selectingspace = false;
 					savedundo = false;
 				}
-				if ( mousestatus[SDL_BUTTON_RIGHT] && selectedEntity == NULL )
+				if ( mousestatus[SDL_BUTTON_RIGHT] && selectedEntity[0] == NULL )
 				{
 					if ( selectedTool != 3 )
 					{
@@ -3398,9 +3409,9 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 2 ) 
 				{
-					if ( selectedEntity != NULL ) 
+					if ( selectedEntity[0] != NULL )
 					{
-						spriteStats = selectedEntity->getStats();
+						spriteStats = selectedEntity[0]->getStats();
 						if ( spriteStats != nullptr )
 						{
 							int numProperties = sizeof(monsterPropertyNames) / sizeof(monsterPropertyNames[0]); //find number of entries in property list
@@ -3768,7 +3779,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 3 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties = sizeof(chestPropertyNames) / sizeof(chestPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(chestPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -3964,7 +3975,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 4 || newwindow == 5 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties;
 
@@ -4429,7 +4440,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 6 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties = sizeof(summonTrapPropertyNames) / sizeof(summonTrapPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(summonTrapPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -4638,7 +4649,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 7 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties = sizeof(powerCrystalPropertyNames) / sizeof(powerCrystalPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(powerCrystalPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -4831,7 +4842,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 8 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties = sizeof(leverTimerPropertyNames) / sizeof(leverTimerPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(leverTimerPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -4929,7 +4940,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 9 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties = sizeof(boulderTrapPropertyNames) / sizeof(boulderTrapPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(boulderTrapPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -5071,7 +5082,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 10 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties = sizeof(pedestalPropertyNames) / sizeof(pedestalPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(pedestalPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -5242,7 +5253,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 11 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties = sizeof(teleporterPropertyNames) / sizeof(teleporterPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(teleporterPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -5350,7 +5361,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 12 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(ceilingTilePropertyNames) / sizeof(ceilingTilePropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(ceilingTilePropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -5427,7 +5438,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 13 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(spellTrapPropertyNames) / sizeof(spellTrapPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(spellTrapPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -5562,7 +5573,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 14 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(furniturePropertyNames) / sizeof(furniturePropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(furniturePropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -5669,7 +5680,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 15 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(floorDecorationPropertyNames) / sizeof(floorDecorationPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(floorDecorationPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -5901,7 +5912,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 18 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(soundSourcePropertyNames) / sizeof(soundSourcePropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(soundSourcePropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -6018,7 +6029,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 19 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(lightSourcePropertyNames) / sizeof(lightSourcePropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(lightSourcePropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -6124,7 +6135,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 20 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(textSourcePropertyNames) / sizeof(textSourcePropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(textSourcePropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -6512,7 +6523,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 21 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(signalTimerPropertyNames) / sizeof(signalTimerPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(signalTimerPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -6657,7 +6668,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 22 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(customPortalPropertyNames) / sizeof(customPortalPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(customPortalPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -6854,7 +6865,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 23 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(tablePropertyNames) / sizeof(tablePropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(tablePropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -7004,7 +7015,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 24 )
 				{
-						if ( selectedEntity != nullptr )
+						if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(readableBookPropertyNames) / sizeof(readableBookPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(readableBookPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -7146,7 +7157,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 26 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties = sizeof(doorPropertyNames) / sizeof(doorPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(doorPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -7249,7 +7260,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 27 )
 				{
-					if ( selectedEntity != NULL )
+					if ( selectedEntity[0] != NULL )
 					{
 						int numProperties = sizeof(gatePropertyNames) / sizeof(gatePropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(gatePropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -7328,7 +7339,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 28 )
 				{
-					if ( selectedEntity != nullptr )
+					if ( selectedEntity[0] != nullptr )
 					{
 						int numProperties = sizeof(playerSpawnPropertyNames) / sizeof(playerSpawnPropertyNames[0]); //find number of entries in property list
 						const int lenProperties = sizeof(playerSpawnPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -7435,7 +7446,7 @@ int main(int argc, char** argv)
 				}
 				else if ( newwindow == 25 )
 				{
-					//if ( selectedEntity != nullptr )
+					//if ( selectedEntity[0] != nullptr )
 					//{
 					//	int numProperties = sizeof(playerClassSetterPropertyNames) / sizeof(playerClassSetterPropertyNames[0]); //find number of entries in property list
 					//	const int lenProperties = sizeof(playerClassSetterPropertyNames[0]) / sizeof(char); //find length of entry in property list
@@ -8385,9 +8396,9 @@ int main(int argc, char** argv)
 				if (palette[mousey + mousex * yres] >= 0)
 				{
 					entity = newEntity(palette[mousey + mousex * yres], 0, map.entities, nullptr);
-					selectedEntity = entity;
-					lastSelectedEntity = selectedEntity;
-					setSpriteAttributes(selectedEntity, nullptr, nullptr);
+					selectedEntity[0] = entity;
+					lastSelectedEntity[0] = selectedEntity[0];
+					setSpriteAttributes(selectedEntity[0], nullptr, nullptr);
 				}
 
 				mclick = 0;
